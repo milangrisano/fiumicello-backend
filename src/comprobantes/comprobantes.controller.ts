@@ -40,7 +40,7 @@ export class ComprobantesController {
   }
 
   @Delete(':id')
-  @Roles('admin')
+  @Roles('superadmin', 'admin')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.comprobantes.remove(id);

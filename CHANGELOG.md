@@ -6,28 +6,30 @@ Dates are UTC.
 ## [Unreleased]
 
 ### Added (2026-09-04)
-- **JWT authentication & roles** (`src/auth/`):
-  - `usuarios` entity (username, bcrypt `password_hash`, `rol`: `admin`|`editor`).
-  - Passport `JwtStrategy`, global `JwtAuthGuard` + `RolesGuard` (via `APP_GUARD`).
-  - Decorators: `@Roles(...)`, `@CurrentUser()`, `@Public()`.
-  - `POST /api/auth/login` (`@Public`) issues a JWT.
-  - Seed of initial users (`admin`/`enrique`, `editor`/`herb`) from env on first boot.
-- **Write CRUD** (previously read-only):
-  - `POST /api/facturas` — creates invoice header + items in a transaction.
-  - `PUT /api/facturas/:id`, `DELETE /api/facturas/:id`.
-  - `POST /api/comprobantes`, `PUT /api/comprobantes/:id`, `DELETE /api/comprobantes/:id`.
-  - DTOs with `class-validator`.
-- **Deduplication**: duplicate invoices/comprobantes rejected with **HTTP 409**
-  (factura = `numero_factura`+`proveedor`+`fecha`; comprobante = `referencia`+`total`).
-- **Global validation** pipe (whitelist + transform) in `main.ts`.
+- **Registration with email verification code**:
+  - `POST /api/auth/register` (send 6-digit code to email), `POST /api/auth/verify`
+    (validate code + set password, bcrypt). User = email (unique).
+  - `EmailService` abstract contract + `EmailServiceSimulado` (logs code; active) and
+    `EmailServiceReal` (future SMTP). Protocol fixed; swap without other changes.
+- **Password recovery**: `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`.
+- **Service tokens (agent/superadmin)**:
+  - `POST/GET/DELETE /api/auth/servicios` (superadmin) — generate service token (shown once,
+    stored as hash), list, revoke.
+  - Auth guard accepts JWT (humans) **or** service API token (e.g. `herb`).
+- **Admin approval**: `GET /api/auth/usuarios/pendientes`, `POST /api/auth/usuarios/:id/aprobar`.
+- **Roles**: added `superadmin` (highest); `admin`; `editor`. DELETE on facturas/comprobantes
+  now allows `superadmin` and `admin`.
 
 ### Changed (2026-09-04)
-- App module registered `Usuario` entity and `AuthModule`; global guards enabled.
-- `DELETE` restricted to **admin** role (editor gets 403).
+- `usuarios` schema: `email` primary identity, `rol` incl. `superadmin`, `estado`
+  (`pendiente`/`aprobado`/`desactivado`), `email_verified`, `codigo_*`, `reset_token*`,
+  `api_token_hash`, `nombre_servicio`. `username` removed (migrated to `email`).
+- Login uses email + password; rejects pending/disabled accounts.
+- `listPendientes` no longer returns password hashes.
 
 ### Fixed (2026-09-04)
-- PostgreSQL sequences re-synced to `max(id)` after the SQLite→Postgres migration
-  (prevented `duplicate key` on new inserts).
+- PostgreSQL sequences re-synced to `max(id)` after migration.
+- Superadmin could not DELETE (roles fixed).
 
 ---
 

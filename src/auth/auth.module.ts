@@ -5,6 +5,7 @@ import { Usuario } from '../entities/usuario.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { EmailService, EmailServiceSimulado } from './email.service';
 
 @Module({
   imports: [
@@ -15,7 +16,13 @@ import { JwtStrategy } from './jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    // EmailService with the simulated implementation active for now.
+    // Swap to EmailServiceReal when a real SMTP/provider is configured.
+    { provide: EmailService, useClass: EmailServiceSimulado },
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

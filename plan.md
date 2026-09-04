@@ -31,11 +31,23 @@ agent) to **read and write** via a CRUD API with **role-based access**.
 ### Roles
 | Role | Capabilities |
 |---|---|
-| `admin` | everything (CRUD read/write + **DELETE**) |
+| `superadmin` | everything (CRUD + **DELETE** + manage service tokens + approve registrations) |
+| `admin` | CRUD read/write + approve registrations (no token mgmt) |
 | `editor` | CRUD read/write (**no DELETE** → 403) |
 
-- Seed: initial users created from env on first boot (`ADMIN_USERNAME/ADMIN_PASSWORD`,
-  `EDITOR_USERNAME/EDITOR_PASSWORD` in `.env`). Passwords hashed with bcrypt.
+### Human registration (email = username)
+- `POST /api/auth/register` (email) → sends 6-digit code (simulated now; real SMTP later).
+- `POST /api/auth/verify` (email + code + password) → creates user (bcrypt), `pendiente` until approved.
+- `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` (recovery by email).
+
+### Service accounts (agents, e.g. herb)
+- Identified by a long random **service token** (stored as hash, shown once on generation).
+- Auth guard accepts JWT (humans) **or** service token (agents).
+- Managed by superadmin: `GET/POST/DELETE /api/auth/servicios`.
+
+### Seeds
+- Initial `superadmin` from env (`SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD`).
+- Service accounts (herb) get their token generated via the superadmin token manager.
 
 ---
 
