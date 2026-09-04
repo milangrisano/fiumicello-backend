@@ -12,10 +12,14 @@ import { GastosModule } from './gastos/gastos.module';
   controllers: [HealthController],
   imports: [
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: process.env.DB_PATH || '/data/payment_vouchers.db',
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASS || '',
+      database: process.env.DB_NAME || 'fiumicello',
       entities: [Factura, FacturaItem, ComprobantePago],
-      synchronize: false,
+      synchronize: true, // creates tables in dev; switch to migrations for prod control
       logging: false,
     }),
     FacturasModule,

@@ -17,7 +17,7 @@ export class ComprobantePago {
   @Column({ type: 'text', nullable: true })
  concepto: string | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  total_con_impuestos: number | null;
 
   @Column({ type: 'text', nullable: true })
@@ -29,10 +29,10 @@ export class ComprobantePago {
   @Column({ type: 'text', nullable: true })
  fecha_pago: string | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  base_imponible: number | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  iva: number | null;
 
   @Column({ type: 'text', nullable: true })

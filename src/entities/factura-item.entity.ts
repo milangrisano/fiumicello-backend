@@ -11,19 +11,19 @@ export class FacturaItem {
   @Column({ type: 'text', nullable: true })
  descripcion: string | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  cantidad: number | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  precio_unitario: number | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  base_imponible: number | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  iva: number | null;
 
-  @Column({ type: 'real', nullable: true })
+  @Column({ type: 'numeric', precision: 18, scale: 4, nullable: true })
  total: number | null;
 
   @Column({ type: 'text', nullable: true })
