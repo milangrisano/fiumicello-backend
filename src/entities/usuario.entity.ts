@@ -1,6 +1,14 @@
 import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
 
-export type UserRole = 'superadmin' | 'admin' | 'editor';
+export type UserRole =
+  | 'superadmin'
+  | 'admin'
+  | 'encargado'
+  | 'cajero'
+  | 'cocinero'
+  | 'mesero'
+  | 'ayudante'
+  | 'editor';
 export type UserStatus = 'pendiente' | 'aprobado' | 'desactivado';
 
 /**

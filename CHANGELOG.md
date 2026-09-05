@@ -5,6 +5,17 @@ Dates are UTC.
 
 ## [Unreleased]
 
+### Added (2026-09-05)
+- **Dynamic Roles & Permissions system** (`src/auth/permissions.ts`, `roles.service.ts`,
+  `roles.controller.ts`, `roles-permisos.service.ts`, `roles.guard` → `permisos.guard.ts`):
+  - `roles` table (nombre, descripcion, permisos_json, es_base); base roles seeded:
+    `encargado`, `cajero`, `cocinero`, `mesero`, `ayudante` (editable).
+  - Permission catalog of `modulo:accion`; `@RequirePermiso` + `PermisosGuard` (global).
+  - `superadmin` bypasses; hierarchy rules (admin can't grant more than it has, can't manage superadmin).
+  - CRUD `/api/auth/roles` (create/rename/update/delete), `/api/auth/roles/catalogo`,
+    `/api/auth/mis-permisos`.
+- `UserRole` extended: `superadmin | admin | encargado | cajero | cocinero | mesero | ayudante | editor`.
+
 ### Added (2026-09-04)
 - **Registration with email verification code**:
   - `POST /api/auth/register` (send 6-digit code to email), `POST /api/auth/verify`

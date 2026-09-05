@@ -13,10 +13,23 @@ import {
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
+import { RolesPermisosService } from './roles-permisos.service';
+import { CurrentUser, JwtUser } from './current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly permisos: RolesPermisosService,
+  ) {}
+
+  // ---- Permissions of the logged-in user (frontend menu/actions) ----
+  @Get('mis-permisos')
+  @Roles('superadmin', 'admin', 'encargado', 'cajero', 'cocinero', 'mesero', 'ayudante', 'editor')
+  async misPermisos(@CurrentUser() user: JwtUser) {
+    const permisos = await this.permisos.permisosDeUsuario(user.rol);
+    return { rol: user.rol, permisos };
+  }
 
   // ---- Registration: step 1 - request a verification code ----
   @Public()

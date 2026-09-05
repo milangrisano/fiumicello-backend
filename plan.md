@@ -51,6 +51,47 @@ agent) to **read and write** via a CRUD API with **role-based access**.
 
 ---
 
+## 2b. Dynamic Roles & Permissions system
+
+**Decision (approved with Enrique):** Roles are **dynamic and configurable**, not
+hardcoded. A SuperAdmin/Admin can create new roles, rename base roles, and assign/revoke
+permissions per role. `superadmin` is the only truly fixed role (implicitly has ALL permissions).
+
+### Roles model
+- `Usuario.rol` holds the role **name** (single field, hierarchy base):
+  `superadmin > admin > editor(internal) > encargado > cajero > cocinero > mesero > ayudante`.
+- **`roles` table**: `nombre`, `descripcion`, `permisos_json` (array of `modulo:accion`),
+  `es_base`. Base roles seeded with sensible default permissions; all editable.
+- **Permissions catalog** (`src/auth/permissions.ts`): fixed list of `modulo:accion`
+  (e.g. `facturas:ver`, `ventas:crear`, `cocina:actualizar`, `caja:cerrar`, `usuarios:gestionar`,
+  `roles:gestionar`, `tokens:gestionar`, ...). This is the universe the admin can assign.
+- **`RolesPermisosService`**: resolves a user's effective permissions by role.
+  - `superadmin` → all permissions (bypass).
+  - others → their role's `permisos_json`.
+
+### Authorization guards
+- `@RequirePermiso('modulo:accion')` + **`PermisosGuard`** (global, after RolesGuard).
+  - No decorator → any authenticated user.
+  - `superadmin` bypasses.
+  - Otherwise requires the user's role to include at least one required permission.
+
+### Role administration rules (hierarchy)
+- **SuperAdmin**: sees/manages the whole universe — users, all roles, tokens, approvals, delete.
+- **Admin**: creates/edits users (base operational roles) and configures permissions of
+  operational roles. **Cannot** see/manage SuperAdmin. **Cannot** assign a permission it does not itself have.
+- **Encargado → Ayudante**: operational only; never manage users/tokens.
+- Only SuperAdmin can **delete** roles; base roles cannot be deleted.
+
+### Endpoints (auth)
+- `GET  /api/auth/mis-permisos` → `{ rol, permisos[] }` (frontend renders menu/actions).
+- `GET  /api/auth/roles` → list roles (with their permissions).
+- `GET  /api/auth/roles/catalogo` → catalog of assignable permissions.
+- `POST /api/auth/roles` → create role (name, desc, permisos[]).
+- `PUT  /api/auth/roles/:nombre` → rename/update role.
+- `DELETE /api/auth/roles/:nombre` → delete (superadmin only, base roles protected).
+
+---
+
 ## 3. Endpoints
 
 ### Auth
