@@ -130,7 +130,7 @@ export class AuthService {
     );
   }
 
-  // ---- password reset: request ----
+  // ---- password reset: request (same pattern as registration) ----
   async requestReset(email: string): Promise<{ ok: boolean; message: string }> {
     const normalized = (email || '').trim().toLowerCase();
     // Generic response regardless of existence (no user enumeration).
@@ -139,34 +139,35 @@ export class AuthService {
     }
     const user = await this.usuarios.findOneBy({ email: normalized });
     if (user) {
-      const token = this.rawServiceToken();
-      user.reset_token = token;
-      user.reset_token_expires = new Date(Date.now() + CODE_TTL_MS).toISOString();
+      const code = this.generateCode();
+      user.codigo_verificacion = code;
+      user.codigo_expiracion = new Date(Date.now() + CODE_TTL_MS).toISOString();
       await this.usuarios.save(user);
-      await this.email.sendResetToken(normalized, token);
+      await this.email.sendVerificationCode(normalized, code);
     }
-    return { ok: true, message: 'Si el email existe, recibirás un enlace de recuperación.' };
+    return { ok: true, message: 'Si el email existe, recibirás un código de recuperación.' };
   }
 
-  // ---- password reset: confirm ----
-  async resetPassword(email: string, resetToken: string, newPassword: string): Promise<void> {
+  // ---- password reset: confirm (code + new password) ----
+  async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
     const normalized = (email || '').trim().toLowerCase();
     const user = await this.usuarios.findOneBy({ email: normalized });
-    if (
-      !user ||
-      !user.reset_token ||
-      !user.reset_token_expires ||
-      user.reset_token !== resetToken ||
-      new Date(user.reset_token_expires).getTime() < Date.now()
-    ) {
-      throw new BadRequestException('Enlace de recuperación inválido o expirado.');
+    // Code must exist, match, and not be expired.
+    const valid =
+      user &&
+      user.codigo_verificacion &&
+      user.codigo_expiracion &&
+      user.codigo_verificacion === code &&
+      new Date(user.codigo_expiracion).getTime() >= Date.now();
+    if (!valid) {
+      throw new BadRequestException('Código de recuperación inválido o expirado.');
     }
     if (!newPassword || newPassword.length < 6) {
       throw new BadRequestException('La contraseña debe tener al menos 6 caracteres.');
     }
     user.password_hash = await this.hashPassword(newPassword);
-    user.reset_token = null;
-    user.reset_token_expires = null;
+    user.codigo_verificacion = null;
+    user.codigo_expiracion = null;
     await this.usuarios.save(user);
     this.logger.log(`Contraseña restablecida para ${normalized}.`);
   }
