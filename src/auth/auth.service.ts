@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -254,6 +255,20 @@ export class AuthService {
     }));
   }
 
+  /** List users for the admin screen (never expose password_hash/tokens). */
+  async listarUsuarios() {
+    const rows = await this.usuarios.find({ order: { id: 'ASC' } });
+    return rows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      rol: u.rol,
+      estado: u.estado,
+      email_verified: u.email_verified,
+      created_at: u.created_at,
+      nombre_servicio: u.nombre_servicio,
+    }));
+  }
+
   async approveUser(id: number): Promise<void> {
     const user = await this.usuarios.findOneBy({ id });
     if (!user) throw new BadRequestException('Usuario no encontrado.');
@@ -265,6 +280,24 @@ export class AuthService {
         'Tu cuenta fue aprobada. Ya puedes iniciar sesión.',
       );
     }
+  }
+
+  /**
+   * Assign a role to a user. `actorRol` is the caller's role.
+   * - Admin cannot manage superadmin users, and cannot assign the superadmin role.
+   * - Only superadmin can assign the superadmin role.
+   */
+  async asignarRol(id: number, nuevoRol: string, actorRol: string): Promise<void> {
+    const user = await this.usuarios.findOneBy({ id });
+    if (!user) throw new BadRequestException('Usuario no encontrado.');
+    if (user.rol === 'superadmin' && actorRol !== 'superadmin') {
+      throw new ForbiddenException('No puedes modificar un superadmin.');
+    }
+    if (nuevoRol === 'superadmin' && actorRol !== 'superadmin') {
+      throw new ForbiddenException('No puedes asignar el rol superadmin.');
+    }
+    user.rol = nuevoRol as Usuario['rol'];
+    await this.usuarios.save(user);
   }
 
   // ---- seed ----

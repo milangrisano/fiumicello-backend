@@ -93,12 +93,32 @@ export class AuthController {
     return this.auth.listPendientes();
   }
 
+  // ---- Admin: list all users ----
+  @Get('usuarios')
+  @Roles('superadmin', 'admin')
+  async listarUsuarios() {
+    return this.auth.listarUsuarios();
+  }
+
   // ---- Admin: approve a user ----
   @Post('usuarios/:id/aprobar')
   @Roles('superadmin', 'admin')
   @HttpCode(HttpStatus.OK)
   async aprobar(@Param('id', ParseIntPipe) id: number) {
     await this.auth.approveUser(id);
+    return { ok: true, id };
+  }
+
+  // ---- Admin: assign a role to a user ----
+  @Post('usuarios/:id/rol')
+  @Roles('superadmin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  async asignarRol(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { rol?: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    await this.auth.asignarRol(id, body.rol || '', user.rol);
     return { ok: true, id };
   }
 
