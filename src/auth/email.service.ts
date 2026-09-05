@@ -11,6 +11,12 @@ import { Logger } from '@nestjs/common';
 export abstract class EmailService {
   abstract sendVerificationCode(toEmail: string, code: string): Promise<void>;
   abstract sendResetToken(toEmail: string, resetToken: string): Promise<void>;
+
+  /**
+   * Notify a user about an account-status change (e.g. pending approval,
+   * approved, disabled).
+   */
+  abstract sendAccountStatus(toEmail: string, message: string): Promise<void>;
 }
 
 /**
@@ -33,6 +39,12 @@ export class EmailServiceSimulado extends EmailService {
   async sendResetToken(toEmail: string, resetToken: string): Promise<void> {
     this.logger.log(
       `[SIMULADO] Token de reseteo para ${toEmail}: ${resetToken}`,
+    );
+  }
+
+  async sendAccountStatus(toEmail: string, message: string): Promise<void> {
+    this.logger.log(
+      `[SIMULADO] Notificacion de cuenta para ${toEmail}: ${message}`,
     );
   }
 }
@@ -59,5 +71,9 @@ export class EmailServiceReal extends EmailService {
 
   async sendResetToken(_toEmail: string, _resetToken: string): Promise<void> {
     this.logger.log('EmailServiceReal.sendResetToken (TODO: implementar SMTP).');
+  }
+
+  async sendAccountStatus(_toEmail: string, _message: string): Promise<void> {
+    this.logger.log('EmailServiceReal.sendAccountStatus (TODO: implementar SMTP).');
   }
 }

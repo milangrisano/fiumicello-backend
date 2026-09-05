@@ -37,6 +37,15 @@ export class AuthController {
     return { ok: true, message: 'Cuenta verificada. Queda pendiente de aprobación.' };
   }
 
+  // ---- Registration: validate the code only (no account creation) ----
+  @Public()
+  @Post('verify-code')
+  @HttpCode(HttpStatus.OK)
+  async verifyCode(@Body() body: { email?: string; code?: string }) {
+    await this.auth.validateCode(body.email || '', body.code || '');
+    return { ok: true, message: 'Código válido.' };
+  }
+
   // ---- Login ----
   @Public()
   @Post('login')

@@ -86,6 +86,21 @@ export class AuthService {
     return { ok: true, message: 'Código de verificación enviado.' };
   }
 
+  // ---- registration: validate the code (no account creation) ----
+  async validateCode(email: string, code: string): Promise<void> {
+    const normalized = (email || '').trim().toLowerCase();
+    const user = await this.usuarios.findOneBy({ email: normalized });
+    if (!user || !user.codigo_verificacion || !user.codigo_expiracion) {
+      throw new BadRequestException('Solicita un código de verificación primero.');
+    }
+    if (new Date(user.codigo_expiracion).getTime() < Date.now()) {
+      throw new BadRequestException('El código expiró. Solicita uno nuevo.');
+    }
+    if (user.codigo_verificacion !== code) {
+      throw new BadRequestException('Código incorrecto.');
+    }
+  }
+
   // ---- registration: step 2 (verify code + set password) ----
   async verifyAndCreate(email: string, code: string, password: string): Promise<void> {
     const normalized = (email || '').trim().toLowerCase();
@@ -109,6 +124,10 @@ export class AuthService {
     // remains estado='pendiente' until superadmin approves
     await this.usuarios.save(user);
     this.logger.log(`Usuario verificado y creado (pendiente de aprobación): ${normalized} (rol ${user.rol})`);
+    await this.email.sendAccountStatus(
+      normalized,
+      'Tu cuenta fue creada y quedó pendiente de aprobación. Te avisaremos cuando sea aprobada.',
+    );
   }
 
   // ---- password reset: request ----
@@ -239,6 +258,12 @@ export class AuthService {
     if (!user) throw new BadRequestException('Usuario no encontrado.');
     user.estado = 'aprobado';
     await this.usuarios.save(user);
+    if (user.email) {
+      await this.email.sendAccountStatus(
+        user.email,
+        'Tu cuenta fue aprobada. Ya puedes iniciar sesión.',
+      );
+    }
   }
 
   // ---- seed ----
