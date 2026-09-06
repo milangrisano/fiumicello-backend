@@ -106,7 +106,7 @@ export class CartaService {
     const cats = await this.categorias.save([
       this.categorias.create({ nombre: 'Pizzas', orden: 1, created_at: now }),
       this.categorias.create({ nombre: 'Pizzas de la Casa', orden: 2, created_at: now }),
-      this.categorias.create({ nombre: 'Pastas', orden: 3, created_at: now }),
+      this.categorias.create({ nombre: 'Lasagnas', orden: 3, created_at: now }),
       this.categorias.create({ nombre: 'Paninis', orden: 4, created_at: now }),
       this.categorias.create({ nombre: 'Bebidas', orden: 5, created_at: now }),
     ]);
@@ -138,18 +138,28 @@ export class CartaService {
       { cat: 'Pizzas de la Casa', nombre: 'Salametto', desc: 'Salsa pomodoro, queso mozzarella, salami madurado italiano', personal: 31900, mediana: 62900, grande: 92900 },
       { cat: 'Pizzas de la Casa', nombre: 'Prosciutto e Funghi', desc: 'Salsa pomodoro, queso mozzarella, jamón cocido y curado, champiñones salteados', personal: 27900, mediana: 51900, grande: 76900 },
       { cat: 'Pizzas de la Casa', nombre: 'Salami y Vegetales', desc: 'Salsa pomodoro, queso mozzarella, salamino, pimentón asado, cebolla, aceitunas negras, anchoas', personal: 29900, mediana: 56900, grande: 83900 },
-      // Pastas
-      { cat: 'Pastas', nombre: 'Lasagna di Carne', desc: 'Ragù napolitano, besciamella y quesos', precio: 26900 },
-      { cat: 'Pastas', nombre: 'Lasagna Mista', desc: 'Lasagna di Carne y pollo', precio: 28900 },
+      // Lasagnas
+      { cat: 'Lasagnas', nombre: 'Lasagna di Carne', desc: 'Salsa ragù napolitano, besciamella y quesos gratinados', precio: 26900 },
+      { cat: 'Lasagnas', nombre: 'Lasagna Mista', desc: 'Lasagna di Carne y pollo', precio: 28900 },
       // Paninis (4)
       { cat: 'Paninis', nombre: 'Schiacciata di Parma', desc: 'Schiacciata de ajo y orégano, pesto di basilico, prosciutto crudo di Parma, fiordilatte, tomate fresco, rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 36900 },
       { cat: 'Paninis', nombre: 'Schiacciata di Bologna', desc: 'Schiacciata de ajo y orégano, pesto di basilico, mortadela di pistachio, fiordilatte, tomate y rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 26900 },
       { cat: 'Paninis', nombre: 'Schiacciata di Córcega', desc: 'Schiacciata de ajo y orégano, pesto di basilico, tomates y rúcula fresca, coppa o capicola, fiordilatte, tomate fresco, aceite de oliva y aceto balsámico de Módena', precio: 32900 },
       { cat: 'Paninis', nombre: 'Schiacciata Cotto', desc: 'Schiacciata de ajo y orégano, pesto di albahaca y tomates secos, prosciutto cotto Módena, fiordilatte, tomate y rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 28900 },
-      // Bebidas
-      { cat: 'Bebidas', nombre: 'Heineken', desc: null, precio: 12000 },
-      { cat: 'Bebidas', nombre: 'Coca-Cola', desc: null, precio: 5000 },
-      { cat: 'Bebidas', nombre: 'Agua sin gas', desc: null, precio: 3500 },
+      // Bebidas (13, grouped by family in the description)
+      { cat: 'Bebidas', nombre: '3 Cordilleras', desc: 'Cerveza', precio: 10000 },
+      { cat: 'Bebidas', nombre: 'Heineken', desc: 'Cerveza', precio: 12000 },
+      { cat: 'Bebidas', nombre: 'Miller Lite', desc: 'Cerveza', precio: 10000 },
+      { cat: 'Bebidas', nombre: 'Té Hatsu Blanco', desc: 'Té', precio: 8000 },
+      { cat: 'Bebidas', nombre: 'Té Hatsu Lila', desc: 'Té', precio: 8000 },
+      { cat: 'Bebidas', nombre: 'Té Hatsu Negro', desc: 'Té', precio: 8000 },
+      { cat: 'Bebidas', nombre: 'Coca-Cola Original', desc: 'Gaseosa', precio: 5000 },
+      { cat: 'Bebidas', nombre: 'Coca-Cola Zero', desc: 'Gaseosa', precio: 5000 },
+      { cat: 'Bebidas', nombre: 'Ginger Ale', desc: 'Gaseosa', precio: 4500 },
+      { cat: 'Bebidas', nombre: 'Quatro', desc: 'Gaseosa', precio: 4500 },
+      { cat: 'Bebidas', nombre: 'Sprite', desc: 'Gaseosa', precio: 4500 },
+      { cat: 'Bebidas', nombre: 'Agua sin gas', desc: 'Agua', precio: 3500 },
+      { cat: 'Bebidas', nombre: 'Agua con gas', desc: 'Agua', precio: 4000 },
     ];
 
     await this.items.save(
