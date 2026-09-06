@@ -26,6 +26,13 @@ export class CartaController {
     return this.carta.obtenerCarta();
   }
 
+  /** Admin: all products (active + disabled) for the products page. */
+  @Get('administracion')
+  @RequirePermiso(PERMISSIONS.carta_editar)
+  administracion() {
+    return this.carta.obtenerCartaAdmin();
+  }
+
   // ---- Admin CRUD (SuperAdmin/Admin with carta:editar) ----
 
   @Post('categorias')
@@ -65,6 +72,14 @@ export class CartaController {
   @RequirePermiso(PERMISSIONS.carta_editar)
   @HttpCode(HttpStatus.OK)
   eliminarItem(@Param('id', ParseIntPipe) id: number) {
-    return this.carta.eliminarItem(id);
+    return this.carta.eliminarProducto(id);
+  }
+
+  // ---- Product lifecycle: enable/disable ----
+  @Post('items/:id/toggle')
+  @RequirePermiso(PERMISSIONS.carta_editar)
+  @HttpCode(HttpStatus.OK)
+  toggleActivo(@Param('id', ParseIntPipe) id: number) {
+    return this.carta.toggleActivo(id);
   }
 }

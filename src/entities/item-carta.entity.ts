@@ -33,6 +33,11 @@ export class ItemCarta {
   @Column({ type: 'integer', nullable: false, default: 0 })
   orden: number;
 
+  // Whether the product is offered. Public carta shows only active items;
+  // disabled products are hidden from the menu but kept for history/admin.
+  @Column({ type: 'boolean', nullable: false, default: true })
+  activo: boolean;
+
   @Column({ type: 'text', nullable: true })
   created_at: string | null;
 }

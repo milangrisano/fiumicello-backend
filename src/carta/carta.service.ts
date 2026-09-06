@@ -30,10 +30,20 @@ export class CartaService {
     private readonly items: Repository<ItemCarta>,
   ) {}
 
-  /** Public: return the full menu (categories + items, ordered) for any viewer. */
+  /** Public: return the menu showing ONLY active products. */
   async obtenerCarta(): Promise<CartaResponse> {
+    return this._buildCarta(true);
+  }
+
+  /** Admin: return ALL products (active + disabled) for management. */
+  async obtenerCartaAdmin(): Promise<CartaResponse> {
+    return this._buildCarta(false);
+  }
+
+  private async _buildCarta(soloActivos: boolean): Promise<CartaResponse> {
     const cats = await this.categorias.find({ order: { orden: 'ASC', id: 'ASC' } });
-    const itms = await this.items.find({ order: { orden: 'ASC', id: 'ASC' } });
+    const itms = (await this.items.find({ order: { orden: 'ASC', id: 'ASC' } }))
+      .filter((i) => !soloActivos || i.activo);
 
     return {
       categorias: cats.map((c) => ({
@@ -49,6 +59,7 @@ export class CartaService {
             precio_personal: num(i.precio_personal),
             precio_mediana: num(i.precio_mediana),
             precio_grande: num(i.precio_grande),
+            activo: i.activo,
           })),
       })),
     };
@@ -94,6 +105,31 @@ export class CartaService {
 
   async eliminarItem(id: number) {
     await this.items.delete(id);
+    return { ok: true };
+  }
+
+  /**
+   * Toggle a product's active state (enable/disable).
+   * Disabled products are hidden from the public carta but kept for history.
+   */
+  async toggleActivo(id: number): Promise<{ ok: boolean; activo: boolean }> {
+    const it = await this.items.findOneBy({ id });
+    if (!it) throw new NotFoundException('Producto no encontrado.');
+    it.activo = !it.activo;
+    await this.items.save(it);
+    return { ok: true, activo: it.activo };
+  }
+
+  /**
+   * Delete a product.
+   * NOTE (pending): when the invoicing module exists, deletion must be blocked
+   * if the product has ever been invoiced (then only disable is allowed). For
+   * now there is no product<->invoice link, so we delete freely.
+   */
+  async eliminarProducto(id: number) {
+    // TODO(facturacion): if product ever invoiced -> throw ForbiddenException
+    //   with message "No se puede eliminar porque ya se facturó"; suggest disabling.
+    await this.eliminarItem(id);
     return { ok: true };
   }
 
