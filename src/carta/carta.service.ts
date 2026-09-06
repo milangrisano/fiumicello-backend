@@ -107,7 +107,7 @@ export class CartaService {
       this.categorias.create({ nombre: 'Pizzas', orden: 1, created_at: now }),
       this.categorias.create({ nombre: 'Pizzas de la Casa', orden: 2, created_at: now }),
       this.categorias.create({ nombre: 'Pastas', orden: 3, created_at: now }),
-      this.categorias.create({ nombre: 'Paninis / Schiacciata', orden: 4, created_at: now }),
+      this.categorias.create({ nombre: 'Paninis', orden: 4, created_at: now }),
       this.categorias.create({ nombre: 'Bebidas', orden: 5, created_at: now }),
     ]);
     const byName = Object.fromEntries(cats.map((c) => [c.nombre, c.id]));
@@ -141,9 +141,11 @@ export class CartaService {
       // Pastas
       { cat: 'Pastas', nombre: 'Lasagna di Carne', desc: 'Ragù napolitano, besciamella y quesos', precio: 26900 },
       { cat: 'Pastas', nombre: 'Lasagna Mista', desc: 'Lasagna di Carne y pollo', precio: 28900 },
-      // Paninis / Schiacciata
-      { cat: 'Paninis / Schiacciata', nombre: 'Schiacciata di Parma', desc: 'Jamón crudo y pesto', precio: 36900 },
-      { cat: 'Paninis / Schiacciata', nombre: 'Schiacciata di Bologna', desc: 'Mortadela y pistacho', precio: 26900 },
+      // Paninis (4)
+      { cat: 'Paninis', nombre: 'Schiacciata di Parma', desc: 'Schiacciata de ajo y orégano, pesto di basilico, prosciutto crudo di Parma, fiordilatte, tomate fresco, rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 36900 },
+      { cat: 'Paninis', nombre: 'Schiacciata di Bologna', desc: 'Schiacciata de ajo y orégano, pesto di basilico, mortadela di pistachio, fiordilatte, tomate y rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 26900 },
+      { cat: 'Paninis', nombre: 'Schiacciata di Córcega', desc: 'Schiacciata de ajo y orégano, pesto di basilico, tomates y rúcula fresca, coppa o capicola, fiordilatte, tomate fresco, aceite de oliva y aceto balsámico de Módena', precio: 32900 },
+      { cat: 'Paninis', nombre: 'Schiacciata Cotto', desc: 'Schiacciata de ajo y orégano, pesto di albahaca y tomates secos, prosciutto cotto Módena, fiordilatte, tomate y rúcula fresca, aceite de oliva y aceto balsámico de Módena', precio: 28900 },
       // Bebidas
       { cat: 'Bebidas', nombre: 'Heineken', desc: null, precio: 12000 },
       { cat: 'Bebidas', nombre: 'Coca-Cola', desc: null, precio: 5000 },
