@@ -122,16 +122,25 @@ export class CartaService {
       mediana?: number | null;
       grande?: number | null;
     }> = [
-      // Pizzas
-      { cat: 'Pizzas', nombre: 'Margherita', desc: null, personal: 20900, mediana: 34900, grande: 44900 },
-      { cat: 'Pizzas', nombre: 'Pepperoni', desc: null, personal: 23900, mediana: 37900, grande: 48900 },
-      { cat: 'Pizzas', nombre: 'Hawaiana', desc: null, personal: 23900, mediana: 37900, grande: 48900 },
-      // Pizzas de la Casa
-      { cat: 'Pizzas de la Casa', nombre: 'Quatro Formaggi', desc: null, personal: 34900, mediana: 48900, grande: 58900 },
-      { cat: 'Pizzas de la Casa', nombre: 'Prosciutto Crudo e Rucula', desc: null, personal: 39900, mediana: 54900, grande: 64900 },
+      // Pizzas (7)
+      { cat: 'Pizzas', nombre: 'Margherita', desc: 'Salsa pomodoro, queso mozzarella y pesto de albahaca de la casa', personal: 20900, mediana: 44900, grande: 63900 },
+      { cat: 'Pizzas', nombre: 'Pollo y Champiñón', desc: 'Salsa pomodoro, queso mozzarella, pollo desmechado y champiñones salteados', personal: 22900, mediana: 44900, grande: 63900 },
+      { cat: 'Pizzas', nombre: 'Pepperoni', desc: 'Salsa pomodoro, queso mozzarella y pepperoni tipo americano', personal: 24900, mediana: 48900, grande: 68900 },
+      { cat: 'Pizzas', nombre: 'Hawaiana', desc: 'Salsa pomodoro, queso mozzarella, jamón ahumado, piña caramelizada', personal: 24900, mediana: 50900, grande: 72900 },
+      { cat: 'Pizzas', nombre: 'Maíz Guanciale', desc: 'Salsa pomodoro, maíz dulce y Guanciale', personal: 23900, mediana: 46900, grande: 71900 },
+      { cat: 'Pizzas', nombre: 'Vegetariana', desc: 'Salsa pomodoro, queso mozzarella, pimentón asado, cebolla, aceitunas negras, champiñones salteados y corazones de alcachofa', personal: 28900, mediana: 53900, grande: 79900 },
+      { cat: 'Pizzas', nombre: 'Napolitana', desc: 'Salsa pomodoro, queso mozzarella y anchoas', personal: 27900, mediana: 52900, grande: 77900 },
+      // Pizzas de la Casa (7)
+      { cat: 'Pizzas de la Casa', nombre: 'Quatro Formaggi', desc: 'Salsa pomodoro, queso provolone, gorgonzola dolce, Parmegiano Reggiano y mozzarella', personal: 34900, mediana: 64900, grande: 96900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Coppa', desc: 'Salsa pomodoro, queso mozzarella, Fior di latte y capicola', personal: 34900, mediana: 64900, grande: 96900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Prosciutto Crudo e Rucula', desc: 'Salsa pomodoro, queso mozzarella, Prosciutto Crudo y rúcula fresca', personal: 34900, mediana: 64900, grande: 96900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Quattro Maiale', desc: 'Salsa pomodoro, queso mozzarella, salamino, tocineta ahumada, jamón cocido curado y pepperoni tipo americano', personal: 29900, mediana: 57900, grande: 85900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Salametto', desc: 'Salsa pomodoro, queso mozzarella, salami madurado italiano', personal: 31900, mediana: 62900, grande: 92900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Prosciutto e Funghi', desc: 'Salsa pomodoro, queso mozzarella, jamón cocido y curado, champiñones salteados', personal: 27900, mediana: 51900, grande: 76900 },
+      { cat: 'Pizzas de la Casa', nombre: 'Salami y Vegetales', desc: 'Salsa pomodoro, queso mozzarella, salamino, pimentón asado, cebolla, aceitunas negras, anchoas', personal: 29900, mediana: 56900, grande: 83900 },
       // Pastas
       { cat: 'Pastas', nombre: 'Lasagna di Carne', desc: 'Ragù napolitano, besciamella y quesos', precio: 26900 },
-      { cat: 'Pastas', nombre: 'Lasagna Mista', desc: 'Con pollo', precio: 28900 },
+      { cat: 'Pastas', nombre: 'Lasagna Mista', desc: 'Lasagna di Carne y pollo', precio: 28900 },
       // Paninis / Schiacciata
       { cat: 'Paninis / Schiacciata', nombre: 'Schiacciata di Parma', desc: 'Jamón crudo y pesto', precio: 36900 },
       { cat: 'Paninis / Schiacciata', nombre: 'Schiacciata di Bologna', desc: 'Mortadela y pistacho', precio: 26900 },
