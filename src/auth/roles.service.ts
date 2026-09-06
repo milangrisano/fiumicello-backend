@@ -41,22 +41,26 @@ const DEFAULT_PERMS: Record<string, string[]> = {
     PERMISSIONS.caja_ver,
     PERMISSIONS.caja_cerrar,
     PERMISSIONS.resumenes_ver,
+    PERMISSIONS.carta_ver,
   ],
   cajero: [
     PERMISSIONS.ventas_ver,
     PERMISSIONS.ventas_crear,
     PERMISSIONS.caja_ver,
+    PERMISSIONS.carta_ver,
   ],
   cocinero: [
     PERMISSIONS.cocina_ver,
     PERMISSIONS.cocina_actualizar,
     PERMISSIONS.ventas_ver,
+    PERMISSIONS.carta_ver,
   ],
   mesero: [
     PERMISSIONS.ventas_ver,
     PERMISSIONS.ventas_crear,
+    PERMISSIONS.carta_ver,
   ],
-  ayudante: [PERMISSIONS.cocina_ver, PERMISSIONS.ventas_ver],
+  ayudante: [PERMISSIONS.cocina_ver, PERMISSIONS.ventas_ver, PERMISSIONS.carta_ver],
 };
 
 @Injectable()

@@ -39,6 +39,10 @@ export const PERMISSIONS = {
 
   // Admin: tokens de servicio
   tokens_gestionar: 'tokens:gestionar',
+
+  // Carta (menu)
+  carta_ver: 'carta:ver',
+  carta_editar: 'carta:editar',
 } as const;
 
 export type Permission = string;
@@ -78,6 +82,9 @@ export const PERMISSION_DEFS: PermissionDef[] = [
   { key: PERMISSIONS.roles_gestionar, label: 'Gestionar roles', modulo: 'Administración' },
   // Admin tokens
   { key: PERMISSIONS.tokens_gestionar, label: 'Gestionar tokens', modulo: 'Administración' },
+  // Carta
+  { key: PERMISSIONS.carta_ver, label: 'Ver carta', modulo: 'Carta (menú)' },
+  { key: PERMISSIONS.carta_editar, label: 'Editar carta', modulo: 'Carta (menú)' },
 ];
 
 /** The SuperAdmin role is special: it implicitly has ALL permissions. */
