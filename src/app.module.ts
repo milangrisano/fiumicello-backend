@@ -10,6 +10,8 @@ import { ItemCarta } from './entities/item-carta.entity';
 import { Venta } from './entities/venta.entity';
 import { VentaItem } from './entities/venta-item.entity';
 import { FormaPago } from './entities/forma-pago.entity';
+import { Pedido } from './entities/pedido.entity';
+import { PedidoItem } from './entities/pedido-item.entity';
 import { HealthController } from './health.controller';
 import { FacturasModule } from './facturas/facturas.module';
 import { ComprobantesModule } from './comprobantes/comprobantes.module';
@@ -18,6 +20,8 @@ import { CartaModule } from './carta/carta.module';
 import { CartaService } from './carta/carta.service';
 import { VentasModule } from './ventas/ventas.module';
 import { VentasService } from './ventas/ventas.service';
+import { PedidosModule } from './pedidos/pedidos.module';
+import { PedidosService } from './pedidos/pedidos.service';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
 import { RolesService } from './auth/roles.service';
@@ -44,6 +48,7 @@ import { PermisosGuard } from './auth/permisos.guard';
       entities: [
         Factura, FacturaItem, ComprobantePago, Usuario, Rol,
         CategoriaCarta, ItemCarta, Venta, VentaItem, FormaPago,
+        Pedido, PedidoItem,
       ],
       synchronize: true,
       logging: false,
@@ -53,6 +58,7 @@ import { PermisosGuard } from './auth/permisos.guard';
     GastosModule,
     CartaModule,
     VentasModule,
+    PedidosModule,
     AuthModule,
   ],
 })
@@ -62,6 +68,7 @@ export class AppModule implements OnModuleInit {
     private readonly roles: RolesService,
     private readonly carta: CartaService,
     private readonly ventas: VentasService,
+    private readonly pedidos: PedidosService,
   ) {}
 
   async onModuleInit() {
