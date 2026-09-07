@@ -7,12 +7,17 @@ import { Usuario } from './entities/usuario.entity';
 import { Rol } from './entities/rol.entity';
 import { CategoriaCarta } from './entities/categoria-carta.entity';
 import { ItemCarta } from './entities/item-carta.entity';
+import { Venta } from './entities/venta.entity';
+import { VentaItem } from './entities/venta-item.entity';
+import { FormaPago } from './entities/forma-pago.entity';
 import { HealthController } from './health.controller';
 import { FacturasModule } from './facturas/facturas.module';
 import { ComprobantesModule } from './comprobantes/comprobantes.module';
 import { GastosModule } from './gastos/gastos.module';
 import { CartaModule } from './carta/carta.module';
 import { CartaService } from './carta/carta.service';
+import { VentasModule } from './ventas/ventas.module';
+import { VentasService } from './ventas/ventas.service';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
 import { RolesService } from './auth/roles.service';
@@ -36,7 +41,10 @@ import { PermisosGuard } from './auth/permisos.guard';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASS || '',
       database: process.env.DB_NAME || 'fiumicello',
-      entities: [Factura, FacturaItem, ComprobantePago, Usuario, Rol, CategoriaCarta, ItemCarta],
+      entities: [
+        Factura, FacturaItem, ComprobantePago, Usuario, Rol,
+        CategoriaCarta, ItemCarta, Venta, VentaItem, FormaPago,
+      ],
       synchronize: true,
       logging: false,
     }),
@@ -44,6 +52,7 @@ import { PermisosGuard } from './auth/permisos.guard';
     ComprobantesModule,
     GastosModule,
     CartaModule,
+    VentasModule,
     AuthModule,
   ],
 })
@@ -52,11 +61,13 @@ export class AppModule implements OnModuleInit {
     private readonly auth: AuthService,
     private readonly roles: RolesService,
     private readonly carta: CartaService,
+    private readonly ventas: VentasService,
   ) {}
 
   async onModuleInit() {
     await this.auth.seedInitialUsers();
     await this.roles.seedBaseRoles();
     await this.carta.seedIfEmpty();
+    await this.ventas.seedFormasPago();
   }
 }

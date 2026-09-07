@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CategoriaCarta } from '../entities/categoria-carta.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
+import { VentaItem } from '../entities/venta-item.entity';
 
 /** Shape returned to clients: categories with their items, ordered. */
 export interface CartaResponse {
@@ -28,6 +29,8 @@ export class CartaService {
     private readonly categorias: Repository<CategoriaCarta>,
     @InjectRepository(ItemCarta)
     private readonly items: Repository<ItemCarta>,
+    @InjectRepository(VentaItem)
+    private readonly ventaItems: Repository<VentaItem>,
   ) {}
 
   /** Public: return the menu showing ONLY active products. */
@@ -121,14 +124,16 @@ export class CartaService {
   }
 
   /**
-   * Delete a product.
-   * NOTE (pending): when the invoicing module exists, deletion must be blocked
-   * if the product has ever been invoiced (then only disable is allowed). For
-   * now there is no product<->invoice link, so we delete freely.
+   * Delete a product. If it has ever been sold (exists in venta_items), it
+   * cannot be deleted — only disabled is allowed (history preserved).
    */
   async eliminarProducto(id: number) {
-    // TODO(facturacion): if product ever invoiced -> throw ForbiddenException
-    //   with message "No se puede eliminar porque ya se facturó"; suggest disabling.
+    const vendidos = await this.ventaItems.count({ where: { id_producto: id } });
+    if (vendidos > 0) {
+      throw new ForbiddenException(
+        'No se puede eliminar porque ya se vendió. Puedes deshabilitarlo.',
+      );
+    }
     await this.eliminarItem(id);
     return { ok: true };
   }
