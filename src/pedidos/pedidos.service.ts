@@ -66,6 +66,16 @@ export class PedidosService {
     if (escenario === 'mesa' && !data.numero_mesa) {
       throw new BadRequestException('Indique el número de mesa.');
     }
+    if (escenario === 'mesa' && data.numero_mesa) {
+      const abierta = await this.pedidos.findOne({
+        where: { estado: 'abierta', escenario: 'mesa', numero_mesa: data.numero_mesa },
+      });
+      if (abierta) {
+        throw new BadRequestException(
+          `La mesa ${data.numero_mesa} ya está abierta. Agrégale productos o pide su cuenta.`,
+        );
+      }
+    }
     if (escenario === 'para_llevar' && !data.cliente_nombre) {
       throw new BadRequestException('Indique el nombre de la persona para llevarla.');
     }
