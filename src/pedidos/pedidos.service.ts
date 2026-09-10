@@ -10,6 +10,8 @@ import { Pedido } from '../entities/pedido.entity';
 import { PedidoItem } from '../entities/pedido-item.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
+import { Venta } from '../entities/venta.entity';
+import { VentaItem } from '../entities/venta-item.entity';
 
 export interface AddItemInput {
   id_producto: number;
@@ -35,6 +37,10 @@ export class PedidosService {
     private readonly pedidoItems: Repository<PedidoItem>,
     @InjectRepository(FormaPago)
     private readonly formasPago: Repository<FormaPago>,
+    @InjectRepository(Venta)
+    private readonly ventas: Repository<Venta>,
+    @InjectRepository(VentaItem)
+    private readonly ventaItems: Repository<VentaItem>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -171,7 +177,8 @@ export class PedidosService {
     return { ...p, items };
   }
 
-  /** Charge the order (mesa -> facturada; para_llevar/domicilio -> pagada_pendiente). */
+  /** Charge the order (mesa -> facturada; para_llevar/domicilio -> pagada_pendiente)
+   *  AND register the sale (Venta + VentaItems) for accounting summaries. */
   async cobrar(id: number, idFormaPago?: number | null) {
     const p = await this.pedidos.findOneBy({ id });
     if (!p) throw new NotFoundException('Pedido no encontrado.');
@@ -191,6 +198,40 @@ export class PedidosService {
     } else {
       p.estado = 'pagada_pendiente';
     }
+    // Registrar la venta (para los resúmenes contables) con sus ítems.
+    await this.dataSource.transaction(async (em) => {
+      const ventaRepo = em.getRepository(Venta);
+      const ventaItemRepo = em.getRepository(VentaItem);
+      const v = ventaRepo.create({
+        numero_factura: p.numero_factura!,
+        escenario: p.escenario,
+        numero_mesa: p.numero_mesa,
+        cliente_nombre: p.cliente_nombre,
+        direccion: p.direccion,
+        telefono: p.telefono,
+        id_forma_pago: p.id_forma_pago,
+        forma_pago_nombre: p.forma_pago_nombre,
+        total: p.total,
+        creado_por: p.creado_por,
+        fecha: new Date().toISOString(),
+      });
+      await ventaRepo.save(v);
+      const items = await em.getRepository(PedidoItem).find({ where: { id_pedido: id } });
+      for (const it of items) {
+        await ventaItemRepo.save(
+          ventaItemRepo.create({
+            id_venta: v.id,
+            id_producto: it.id_producto,
+            nombre: it.nombre,
+            tamanio: it.tamanio,
+            cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
+            subtotal: it.subtotal,
+            created_at: new Date().toISOString(),
+          }),
+        );
+      }
+    });
     await this.pedidos.save(p);
     return this.obtener(id);
   }

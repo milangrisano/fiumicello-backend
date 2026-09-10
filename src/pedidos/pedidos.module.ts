@@ -3,11 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Pedido } from '../entities/pedido.entity';
 import { PedidoItem } from '../entities/pedido-item.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
+import { Venta } from '../entities/venta.entity';
+import { VentaItem } from '../entities/venta-item.entity';
 import { PedidosService } from './pedidos.service';
 import { PedidosController } from './pedidos.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago])],
+  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem])],
   controllers: [PedidosController],
   providers: [PedidosService],
   exports: [PedidosService],
