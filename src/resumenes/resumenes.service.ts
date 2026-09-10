@@ -166,6 +166,8 @@ export class ResumenesService {
         monto: totalMonto,
         ventas: nVentas,
         promedio,
+        venta_promedio_diaria:
+          diasSorted.length > 0 ? totalMonto / diasSorted.length : 0,
       },
       items,
       kpis: {
