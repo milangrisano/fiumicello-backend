@@ -95,15 +95,18 @@ export class ResumenesService {
     // Items: agregar desde todos los venta_items del rango
     const itemsRaw = await this.ventaItems
       .createQueryBuilder('vi')
+      .select('vi.nombre', 'nombre')
+      .addSelect('vi.tamanio', 'tamanio')
+      .addSelect('vi.cantidad', 'cantidad')
+      .addSelect('vi.subtotal', 'subtotal')
       .innerJoin('ventas', 'v', 'v.id = vi.id_venta')
       .where('v.fecha >= :desde', { desde: r.desde.toISOString() })
       .andWhere('v.fecha <= :hasta', { hasta: r.hasta.toISOString() })
-      .orderBy('v.fecha', 'ASC')
-      .getRawAndEntities();
+      .getRawMany();
 
     // Agrupar por nombre+tamaño
     const mapa = new Map<string, { nombre: string; tamanio: string | null; cantidad: number; subtotal: number }>();
-    for (const raw of itemsRaw.raw) {
+    for (const raw of itemsRaw) {
       const nombre = raw.nombre as string;
       const tamanio = raw.tamanio as string | null;
       const clave = `${nombre}||${tamanio ?? ''}`;
