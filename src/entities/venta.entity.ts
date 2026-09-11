@@ -43,6 +43,9 @@ export class Venta {
   @Column({ type: 'integer', nullable: false, default: 0 })
   creado_por: number | null;
 
+  @Column({ type: 'integer', nullable: true })
+  id_turno: number | null;
+
   @Column({ type: 'text', nullable: true })
   fecha: string | null;
 }

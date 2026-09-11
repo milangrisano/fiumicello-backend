@@ -26,7 +26,11 @@ export const PERMISSIONS = {
 
   // Caja
   caja_ver: 'caja:ver',
+  caja_abrir: 'caja:abrir',
   caja_cerrar: 'caja:cerrar',
+  caja_movimientos: 'caja:movimientos',
+  caja_ingreso: 'caja:ingreso',       // autorizar ingresos (admin/encargado)
+  propina_pagar: 'propina:pagar',
 
   // Resumenes / reportes
   resumenes_ver: 'resumenes:ver',

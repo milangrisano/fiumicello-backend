@@ -12,6 +12,7 @@ import { ItemCarta } from '../entities/item-carta.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
+import { TurnosCajaService } from '../turnos-caja/turnos-caja.service';
 
 export interface AddItemInput {
   id_producto: number;
@@ -42,7 +43,8 @@ export class PedidosService {
     @InjectRepository(VentaItem)
     private readonly ventaItems: Repository<VentaItem>,
     private readonly dataSource: DataSource,
-  ) {}
+    private readonly turnosCaja: TurnosCajaService,
+    ) {}
 
   private precio(prod: ItemCarta, tamanio?: string | null): number {
     const t = (tamanio || '').toLowerCase();
@@ -185,6 +187,11 @@ export class PedidosService {
     if (p.estado !== 'abierta') {
       throw new ForbiddenException('El pedido ya no está abierto.');
     }
+    // Requerir turno de caja abierto para poder cobrar.
+    const turno = await this.turnosCaja.activo();
+    if (!turno) {
+      throw new BadRequestException('Debe abrir la caja (turno) antes de cobrar.');
+    }
     let formaPagoNombre: string | null = null;
     if (idFormaPago) {
       const fp = await this.formasPago.findOneBy({ id: idFormaPago });
@@ -214,6 +221,7 @@ export class PedidosService {
         total: p.total,
         creado_por: p.creado_por,
         fecha: new Date().toISOString(),
+        id_turno: turno.id,
       });
       await ventaRepo.save(v);
       const items = await em.getRepository(PedidoItem).find({ where: { id_pedido: id } });
