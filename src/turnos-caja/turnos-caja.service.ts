@@ -41,9 +41,12 @@ export class TurnosCajaService {
   async abrir(idCajero: number, efectivoInicial: number): Promise<TurnoCaja> {
     const existente = await this.abierto(idCajero);
     if (existente) throw new BadRequestException('Ya tiene un turno de caja abierto.');
+    const fechaHoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const delDia = await this.turnos.count({ where: { fecha: fechaHoy } as any });
     const t = this.turnos.create({
       id_cajero: idCajero,
       fecha: new Date().toISOString(),
+      numero_dia: delDia + 1,
       estado: 'abierto',
       efectivo_inicial: efectivoInicial,
     });

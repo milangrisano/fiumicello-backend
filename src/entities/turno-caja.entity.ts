@@ -12,6 +12,10 @@ export class TurnoCaja {
   @Column({ type: 'text', nullable: false })
   fecha: string;
 
+  // Número de turno dentro del día (1, 2, 3...) — cuenta todos los turnos de la fecha.
+  @Column({ type: 'integer', nullable: false, default: 0 })
+  numero_dia: number;
+
   // abierto | cerrado
   @Column({ type: 'text', nullable: false, default: 'abierto' })
   estado: string;
