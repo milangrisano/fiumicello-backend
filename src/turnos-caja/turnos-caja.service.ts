@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { TurnoCaja } from '../entities/turno-caja.entity';
 import { MovimientoCaja } from '../entities/movimiento-caja.entity';
 import { Venta } from '../entities/venta.entity';
@@ -42,7 +42,9 @@ export class TurnosCajaService {
     const existente = await this.abierto(idCajero);
     if (existente) throw new BadRequestException('Ya tiene un turno de caja abierto.');
     const fechaHoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const delDia = await this.turnos.count({ where: { fecha: fechaHoy } as any });
+    const delDia = await this.turnos.count({
+      where: { fecha: Like(`${fechaHoy}%`) } as any,
+    });
     const t = this.turnos.create({
       id_cajero: idCajero,
       fecha: new Date().toISOString(),
