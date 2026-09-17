@@ -61,10 +61,15 @@ export class VentasController {
 
   @Get()
   @RequirePermiso(PERMISSIONS.ventas_ver)
-  listar(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+  listar(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('id_turno') idTurno?: string,
+  ) {
     return this.ventas.listar(
-      limit ? parseInt(limit, 10) : 50,
+      limit ? parseInt(limit, 10) : 500,
       offset ? parseInt(offset, 10) : 0,
+      idTurno ? parseInt(idTurno, 10) : undefined,
     );
   }
 

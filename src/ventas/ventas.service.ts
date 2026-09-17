@@ -142,8 +142,11 @@ export class VentasService {
   }
 
   /** List sales with their items (for history). */
-  async listar(limit = 50, offset = 0) {
+  async listar(limit = 50, offset = 0, idTurno?: number) {
+    const where: any = {};
+    if (idTurno) where.id_turno = idTurno;
     const rows = await this.ventas.find({
+      where,
       order: { id: 'DESC' },
       take: limit,
       skip: offset,
