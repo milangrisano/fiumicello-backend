@@ -118,13 +118,29 @@ export class ResumenesService {
     const items = [...mapa.values()].sort((a, b) => b.subtotal - a.subtotal);
 
     // KPIs
-    let masVendido: any = null;
+    let masVendidoCantidad: any = null;
+    let masVendidoMonto: any = null;
     let semanaMayor: any = null;
     let diaMayor: any = null;
+    let mesMayor: any = null;
 
     if (items.length > 0) {
-      const top = items[0];
-      masVendido = { nombre: top.nombre, tamanio: top.tamanio, cantidad: top.cantidad, subtotal: top.subtotal };
+      // Por cantidad (descendente)
+      const porCant = [...items].sort((a, b) => b.cantidad - a.cantidad)[0];
+      masVendidoCantidad = {
+        nombre: porCant.nombre,
+        tamanio: porCant.tamanio,
+        cantidad: porCant.cantidad,
+        subtotal: porCant.subtotal,
+      };
+      // Por monto (items ya está ordenado por subtotal desc)
+      const topMonto = items[0];
+      masVendidoMonto = {
+        nombre: topMonto.nombre,
+        tamanio: topMonto.tamanio,
+        cantidad: topMonto.cantidad,
+        subtotal: topMonto.subtotal,
+      };
     }
 
     // Día de mayor venta (suma por fecha-día)
@@ -157,6 +173,19 @@ export class ResumenesService {
     const semSorted = [...porSemana.values()].sort((a, b) => b.monto - a.monto);
     if (semSorted.length > 0) semanaMayor = semSorted[0];
 
+    // Mes de mayor venta (suma por año-mes)
+    const porMes = new Map<string, { mes: string; monto: number }>();
+    for (const v of ventas) {
+      if (!v.fecha) continue;
+      const d = new Date(v.fecha);
+      const clave = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      const ent = porMes.get(clave) ?? { mes: `${d.getMonth() + 1}/${d.getFullYear()}`, monto: 0 };
+      ent.monto += Number(v.total ?? 0);
+      porMes.set(clave, ent);
+    }
+    const mesSorted = [...porMes.values()].sort((a, b) => b.monto - a.monto);
+    if (mesSorted.length > 0) mesMayor = mesSorted[0];
+
     return {
       periodo,
       etiqueta: r.etiqueta,
@@ -171,9 +200,11 @@ export class ResumenesService {
       },
       items,
       kpis: {
-        mas_vendido: masVendido,
+        mas_vendido_cantidad: masVendidoCantidad,
+        mas_vendido_monto: masVendidoMonto,
         semana_mayor: semanaMayor,
         dia_mayor: diaMayor,
+        mes_mayor: mesMayor,
       },
     };
   }
