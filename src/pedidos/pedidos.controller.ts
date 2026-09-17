@@ -28,8 +28,12 @@ export class PedidosController {
 
   @Get()
   @RequirePermiso(PERMISSIONS.ventas_ver)
-  listar(@Query('estado') estado?: string, @Query('escenario') escenario?: string) {
-    return this.pedidos.listar(estado, escenario);
+  listar(
+    @Query('estado') estado?: string,
+    @Query('escenario') escenario?: string,
+    @Query('id_turno') idTurno?: string,
+  ) {
+    return this.pedidos.listar(estado, escenario, idTurno ? Number(idTurno) : undefined);
   }
 
   @Get(':id')

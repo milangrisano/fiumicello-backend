@@ -155,10 +155,11 @@ export class PedidosService {
     return this.obtener(id);
   }
 
-  async listar(estado?: string, escenario?: string) {
+  async listar(estado?: string, escenario?: string, idTurno?: number) {
     const where: any = {};
     if (estado) where.estado = estado;
     if (escenario) where.escenario = escenario;
+    if (idTurno) where.id_turno = idTurno;
     const rows = await this.pedidos.find({ where, order: { id: 'DESC' } });
     const items = await this.pedidoItems.find();
     const out: any[] = [];
