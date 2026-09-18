@@ -31,6 +31,11 @@ export class VentaItem {
   @Column({ type: 'numeric', precision: 14, scale: 2, nullable: false })
   subtotal: number; // precio_unitario * cantidad
 
+  // Unit cost (COP) at sale time — editable when building the order; defaults
+  // to the catalog cost. Used for margin reporting.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  costo_unitario: number | null;
+
   @Column({ type: 'text', nullable: true })
   created_at: string | null;
 }

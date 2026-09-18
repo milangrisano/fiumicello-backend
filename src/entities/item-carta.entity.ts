@@ -30,6 +30,10 @@ export class ItemCarta {
   @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
   precio_grande: number | null;
 
+  // Unit cost (COP) — used to compute margins. Editable in admin and at sale time.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  costo: number | null;
+
   @Column({ type: 'integer', nullable: false, default: 0 })
   orden: number;
 

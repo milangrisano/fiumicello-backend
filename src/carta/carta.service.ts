@@ -62,6 +62,7 @@ export class CartaService {
             precio_personal: num(i.precio_personal),
             precio_mediana: num(i.precio_mediana),
             precio_grande: num(i.precio_grande),
+            costo: num(i.costo),
             activo: i.activo,
           })),
       })),

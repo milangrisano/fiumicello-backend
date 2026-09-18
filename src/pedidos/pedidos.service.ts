@@ -19,6 +19,7 @@ export interface AddItemInput {
   tamanio?: string | null;
   cantidad?: number;
   nota?: string | null;
+  costo_unitario?: number | null;
 }
 
 export interface CreatePedidoInput {
@@ -125,6 +126,11 @@ export class PedidosService {
       if (!prod) throw new NotFoundException('Producto no encontrado.');
       const cantidad = it.cantidad && it.cantidad > 0 ? it.cantidad : 1;
       const precio = this.precio(prod, it.tamanio);
+      // Costo: usa el valor explícito si lo envían, si no el del catálogo.
+      const costo =
+        it.costo_unitario != null && !isNaN(Number(it.costo_unitario))
+          ? Number(it.costo_unitario)
+          : (prod.costo != null ? Number(prod.costo) : null);
       await itemRepo.save(
         itemRepo.create({
           id_pedido: pedidoId,
@@ -134,6 +140,7 @@ export class PedidosService {
           cantidad,
           precio_unitario: precio,
           subtotal: precio * cantidad,
+          costo_unitario: costo,
           nota: it.nota || null,
           created_at: new Date().toISOString(),
         }),
@@ -236,6 +243,7 @@ export class PedidosService {
             cantidad: it.cantidad,
             precio_unitario: it.precio_unitario,
             subtotal: it.subtotal,
+            costo_unitario: it.costo_unitario,
             created_at: new Date().toISOString(),
           }),
         );
