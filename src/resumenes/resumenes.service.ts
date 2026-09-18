@@ -83,6 +83,7 @@ export class ResumenesService {
     const ventas = await this.ventas
       .createQueryBuilder('v')
       .where('v.fecha IS NOT NULL')
+      .andWhere('v.anulada = false')
       .andWhere('v.fecha >= :desde', { desde: r.desde.toISOString() })
       .andWhere('v.fecha <= :hasta', { hasta: r.hasta.toISOString() })
       .orderBy('v.fecha', 'ASC')
@@ -102,6 +103,7 @@ export class ResumenesService {
       .innerJoin('ventas', 'v', 'v.id = vi.id_venta')
       .where('v.fecha >= :desde', { desde: r.desde.toISOString() })
       .andWhere('v.fecha <= :hasta', { hasta: r.hasta.toISOString() })
+      .andWhere('v.anulada = false')
       .getRawMany();
 
     // Agrupar por nombre+tamaño

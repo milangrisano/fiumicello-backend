@@ -56,7 +56,9 @@ export class TurnosCajaService {
   }
 
   private async calcularArqueo(t: TurnoCaja): Promise<ArqueoResult> {
-    const ventasTurno = await this.ventas.find({ where: { id_turno: t.id } });
+    const ventasTurno = await this.ventas.find({
+      where: { id_turno: t.id, anulada: false },
+    });
     const porMedioMap = new Map<string, number>();
     let ventasEfectivo = 0;
     for (const v of ventasTurno) {

@@ -46,6 +46,11 @@ export class Venta {
   @Column({ type: 'integer', nullable: true })
   id_turno: number | null;
 
+  // true => venta ANULADA (se conserva el registro pero se excluye de
+  // totales/caja/resúmenes). Solo superadmin puede borrarla físicamente.
+  @Column({ type: 'boolean', nullable: false, default: false })
+  anulada: boolean;
+
   @Column({ type: 'text', nullable: true })
   fecha: string | null;
 }

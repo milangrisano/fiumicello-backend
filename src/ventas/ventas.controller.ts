@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -14,6 +16,7 @@ import {
 import { VentasService, CreateVentaInput } from './ventas.service';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { SUPERADMIN_ROLE } from '../auth/permissions';
 import { CurrentUser, JwtUser } from '../auth/current-user.decorator';
 
 @Controller('ventas')
@@ -77,5 +80,20 @@ export class VentasController {
   @RequirePermiso(PERMISSIONS.ventas_ver)
   obtener(@Param('id', ParseIntPipe) id: number) {
     return this.ventas.obtener(id);
+  }
+
+  @Patch(':id/anular')
+  @RequirePermiso(PERMISSIONS.ventas_eliminar)
+  anular(@Param('id', ParseIntPipe) id: number) {
+    return this.ventas.anular(id);
+  }
+
+  // Borrado físico: SOLO superadmin (no usa @RequirePermiso, validamos rol).
+  @Delete(':id')
+  eliminar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtUser) {
+    if (user?.rol !== SUPERADMIN_ROLE) {
+      throw new ForbiddenException('Solo el super administrador puede eliminar ventas.');
+    }
+    return this.ventas.eliminar(id);
   }
 }

@@ -165,6 +165,26 @@ export class VentasService {
     return { ...v, items };
   }
 
+  /** Anula una venta: conserva el registro pero lo excluye de los totales,
+   *  caja/arqueo y resúmenes. Requiere permiso ventas:eliminar. */
+  async anular(id: number): Promise<Venta> {
+    const v = await this.ventas.findOneBy({ id });
+    if (!v) throw new NotFoundException('Venta no encontrada.');
+    if (v.anulada) throw new BadRequestException('La venta ya está anulada.');
+    v.anulada = true;
+    return this.ventas.save(v);
+  }
+
+  /** Elimina físicamente una venta y sus ítems. SOLO superadmin (lo valida el
+   *  controller). Desaparece de los totales generales definitivamente. */
+  async eliminar(id: number): Promise<{ ok: boolean }> {
+    const v = await this.ventas.findOneBy({ id });
+    if (!v) throw new NotFoundException('Venta no encontrada.');
+    await this.ventaItems.delete({ id_venta: id });
+    await this.ventas.delete(id);
+    return { ok: true };
+  }
+
   // ---- Payment methods (editable catalog) ----
   async listarFormasPago() {
     return this.formasPago.find({ order: { id: 'ASC' } });
