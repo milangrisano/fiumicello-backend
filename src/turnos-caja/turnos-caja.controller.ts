@@ -16,11 +16,11 @@ export class TurnosCajaController {
     private pagosPropina: PagosPropinaService,
   ) {}
 
-  /** Turno abierto del usuario actual (o null). */
+  /** Turno abierto del restaurante (para que todos lo vean). Quien lo abrió es el responsable del cierre. */
   @Get('activo')
   @RequirePermiso(PERMISSIONS.caja_ver)
-  async activo(@CurrentUser() u: { id: number }) {
-    return this.turnos.abierto(u.id);
+  async activo() {
+    return this.turnos.activo();
   }
 
   /** Abrir caja con efectivo inicial. */

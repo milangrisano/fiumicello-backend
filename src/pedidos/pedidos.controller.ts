@@ -26,6 +26,24 @@ export class PedidosController {
     return this.pedidos.crear(body, user?.id || 0);
   }
 
+  // ---- Cocina (cola) ----
+  /** Comandas en cocina: todas, con estado_cocina (para que cocinero y mesero vean los 4 estados). */
+  @Get('cocina/cola')
+  @RequirePermiso(PERMISSIONS.cocina_ver)
+  cola() {
+    return this.pedidos.colaCocina();
+  }
+
+  /** Avanzar/cambiar el estado de cocina de una comanda (cocinero: recibida->preparando->lista; mesero: retirada). */
+  @Post(':id/cocina')
+  @RequirePermiso(PERMISSIONS.cocina_actualizar)
+  cambiarEstadoCocina(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { estado_cocina: string },
+  ) {
+    return this.pedidos.cambiarEstadoCocina(id, body.estado_cocina || '');
+  }
+
   @Get()
   @RequirePermiso(PERMISSIONS.ventas_ver)
   listar(

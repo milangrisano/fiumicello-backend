@@ -8,9 +8,10 @@ import { TurnosCajaService } from './turnos-caja.service';
 import { MovimientosCajaService } from './movimientos-caja.service';
 import { PagosPropinaService } from './pagos-propina.service';
 import { TurnosCajaController } from './turnos-caja.controller';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TurnoCaja, MovimientoCaja, PagoPropina, Venta])],
+  imports: [TypeOrmModule.forFeature([TurnoCaja, MovimientoCaja, PagoPropina, Venta]), RealtimeModule],
   controllers: [TurnosCajaController],
   providers: [TurnosCajaService, MovimientosCajaService, PagosPropinaService],
   exports: [TurnosCajaService],

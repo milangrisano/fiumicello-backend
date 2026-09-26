@@ -13,6 +13,7 @@ import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { TurnosCajaService } from '../turnos-caja/turnos-caja.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface AddItemInput {
   id_producto: number;
@@ -45,6 +46,7 @@ export class PedidosService {
     private readonly ventaItems: Repository<VentaItem>,
     private readonly dataSource: DataSource,
     private readonly turnosCaja: TurnosCajaService,
+    private readonly realtime: RealtimeGateway,
     ) {}
 
   private precio(prod: ItemCarta, tamanio?: string | null): number {
@@ -110,7 +112,9 @@ export class PedidosService {
       await em.getRepository(Pedido).save(ped);
       return ped;
     });
-    return this.obtener(p.id);
+    const pedido = await this.obtener(p.id);
+    this.realtime.emitComandaNueva({ id: pedido.id, escenario: pedido.escenario });
+    return pedido;
   }
 
   private async agregarItems(
@@ -275,6 +279,41 @@ export class PedidosService {
     await this.pedidoItems.delete({ id_pedido: id });
     await this.pedidos.delete(id);
     return { ok: true };
+  }
+
+  /** Cola de cocina: comandas con su estado_cocina, ordenadas por llegada (id ASC). */
+  async colaCocina() {
+    const rows = await this.pedidos.find({ order: { id: 'ASC' } });
+    return rows
+      .filter((p) => ['recibida', 'preparando', 'lista', 'retirada'].includes(p.estado_cocina))
+      .map((p) => ({
+        id: p.id,
+        escenario: p.escenario,
+        numero_mesa: p.numero_mesa,
+        cliente_nombre: p.cliente_nombre,
+        estado: p.estado,
+        estado_cocina: p.estado_cocina,
+        total: p.total,
+        hora_pedido: p.hora_pedido,
+        creado_por: p.creado_por,
+      }));
+  }
+
+  /** Cambia el estado de cocina de una comanda y emite el evento en tiempo real. */
+  async cambiarEstadoCocina(id: number, estado: string) {
+    const validos = ['recibida', 'preparando', 'lista', 'retirada'];
+    if (!validos.includes(estado)) {
+      throw new BadRequestException(`Estado de cocina inválido: ${estado}`);
+    }
+    const p = await this.pedidos.findOneBy({ id });
+    if (!p) throw new NotFoundException('Pedido no encontrado.');
+    p.estado_cocina = estado;
+    await this.pedidos.save(p);
+    this.realtime.emitCocinaEstado({
+      id: p.id,
+      estado_cocina: p.estado_cocina,
+    });
+    return { ok: true, id: p.id, estado_cocina: p.estado_cocina };
   }
 
   private async siguienteNumeroFactura(): Promise<string> {

@@ -8,9 +8,10 @@ import { VentaItem } from '../entities/venta-item.entity';
 import { PedidosService } from './pedidos.service';
 import { PedidosController } from './pedidos.controller';
 import { TurnosCajaModule } from '../turnos-caja/turnos-caja.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem]), TurnosCajaModule],
+  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem]), TurnosCajaModule, RealtimeModule],
   controllers: [PedidosController],
   providers: [PedidosService],
   exports: [PedidosService],

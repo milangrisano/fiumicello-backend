@@ -16,6 +16,13 @@ export class Pedido {
   @Column({ type: 'text', nullable: false, default: 'abierta' })
   estado: string;
 
+  // Estado de cocina de la comanda completa:
+  //   recibida -> preparando -> lista -> retirada
+  // (recibida/preparando/lista los pone el cocinero; retirada el mesero al
+  //  llevarla a la mesa). Independiente del estado de venta/facturación.
+  @Column({ type: 'text', nullable: false, default: 'recibida' })
+  estado_cocina: string;
+
   // mesa | para_llevar | domicilio
   @Column({ type: 'text', nullable: false })
   escenario: string;

@@ -27,6 +27,7 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { PedidosService } from './pedidos/pedidos.service';
 import { ResumenesModule } from './resumenes/resumenes.module';
 import { TurnosCajaModule } from './turnos-caja/turnos-caja.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
 import { RolesService } from './auth/roles.service';
@@ -66,6 +67,7 @@ import { PermisosGuard } from './auth/permisos.guard';
     PedidosModule,
     ResumenesModule,
     TurnosCajaModule,
+    RealtimeModule,
     AuthModule,
   ],
 })

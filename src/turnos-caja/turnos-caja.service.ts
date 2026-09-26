@@ -4,6 +4,7 @@ import { Repository, Like } from 'typeorm';
 import { TurnoCaja } from '../entities/turno-caja.entity';
 import { MovimientoCaja } from '../entities/movimiento-caja.entity';
 import { Venta } from '../entities/venta.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface ArqueoResult {
   turno: TurnoCaja;
@@ -26,6 +27,7 @@ export class TurnosCajaService {
     @InjectRepository(TurnoCaja) private turnos: Repository<TurnoCaja>,
     @InjectRepository(MovimientoCaja) private movs: Repository<MovimientoCaja>,
     @InjectRepository(Venta) private ventas: Repository<Venta>,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   /** Turno abierto del cajero (si lo hay). */
@@ -52,7 +54,9 @@ export class TurnosCajaService {
       estado: 'abierto',
       efectivo_inicial: efectivoInicial,
     });
-    return this.turnos.save(t);
+    const guardado = await this.turnos.save(t);
+    this.realtime.emitTurnoAbierto({ id: guardado.id, id_cajero: guardado.id_cajero });
+    return guardado;
   }
 
   private async calcularArqueo(t: TurnoCaja): Promise<ArqueoResult> {
@@ -135,7 +139,9 @@ export class TurnosCajaService {
     t.diferencia = 0;
     t.estado = 'cerrado';
     t.cierre_at = new Date();
-    return this.turnos.save(t);
+    const cerrado = await this.turnos.save(t);
+    this.realtime.emitTurnoCerrado({ id: cerrado.id });
+    return cerrado;
   }
 
   async listar(): Promise<TurnoCaja[]> {
