@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -22,11 +23,24 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push backend image
+      # ---- Push a main -> entorno de PRUEBAS (hpserver) usa :test ----
+      - name: Build and push backend image (test)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/fiumicello-backend:test
+            ${{ secrets.DOCKERHUB_USERNAME }}/fiumicello-backend:test-${{ github.sha }}
+
+      # ---- Tag de version (vX.Y.Z) -> PRODUCCION (Lenovo) usa :latest ----
+      - name: Build and push backend image (latest / produccion)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/fiumicello-backend:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/fiumicello-backend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/fiumicello-backend:${{ github.ref_name }}
