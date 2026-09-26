@@ -32,6 +32,30 @@ export const ROLES_RANK: Record<string, number> = {
 
 /** Default permissions for each seeded base role (edited later by admin). */
 const DEFAULT_PERMS: Record<string, string[]> = {
+  admin: [
+    PERMISSIONS.facturas_ver,
+    PERMISSIONS.facturas_crear,
+    PERMISSIONS.facturas_editar,
+    PERMISSIONS.facturas_eliminar,
+    PERMISSIONS.ventas_ver,
+    PERMISSIONS.ventas_crear,
+    PERMISSIONS.ventas_editar,
+    PERMISSIONS.ventas_eliminar,
+    PERMISSIONS.cocina_ver,
+    PERMISSIONS.cocina_actualizar,
+    PERMISSIONS.caja_ver,
+    PERMISSIONS.caja_abrir,
+    PERMISSIONS.caja_cerrar,
+    PERMISSIONS.caja_movimientos,
+    PERMISSIONS.caja_ingreso,
+    PERMISSIONS.propina_pagar,
+    PERMISSIONS.resumenes_ver,
+    PERMISSIONS.usuarios_gestionar,
+    PERMISSIONS.roles_gestionar,
+    PERMISSIONS.tokens_gestionar,
+    PERMISSIONS.carta_ver,
+    PERMISSIONS.carta_editar,
+  ],
   encargado: [
     PERMISSIONS.facturas_ver,
     PERMISSIONS.ventas_ver,
@@ -77,6 +101,7 @@ export class RolesService {
     if (count > 0) return;
     const now = new Date().toISOString();
     const baseNames: Array<{ nombre: string; desc: string }> = [
+      { nombre: 'admin', desc: 'Administrador (acceso total)' },
       { nombre: 'encargado', desc: 'Responsable de turno/sucursal' },
       { nombre: 'cajero', desc: 'Registra ventas y caja' },
       { nombre: 'cocinero', desc: 'Prepara órdenes' },

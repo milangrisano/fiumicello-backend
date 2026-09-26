@@ -77,7 +77,11 @@ export const PERMISSION_DEFS: PermissionDef[] = [
   { key: PERMISSIONS.cocina_actualizar, label: 'Actualizar estado cocina', modulo: 'Cocina' },
   // Caja
   { key: PERMISSIONS.caja_ver, label: 'Ver caja', modulo: 'Caja' },
+  { key: PERMISSIONS.caja_abrir, label: 'Abrir caja', modulo: 'Caja' },
   { key: PERMISSIONS.caja_cerrar, label: 'Cerrar caja', modulo: 'Caja' },
+  { key: PERMISSIONS.caja_movimientos, label: 'Ver movimientos de caja', modulo: 'Caja' },
+  { key: PERMISSIONS.caja_ingreso, label: 'Autorizar ingresos de caja', modulo: 'Caja' },
+  { key: PERMISSIONS.propina_pagar, label: 'Pagar propina', modulo: 'Caja' },
   // Resumenes
   { key: PERMISSIONS.resumenes_ver, label: 'Ver resúmenes', modulo: 'Resúmenes' },
   // Admin usuarios
