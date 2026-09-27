@@ -281,12 +281,14 @@ export class PedidosService {
     return { ok: true };
   }
 
-  /** Cola de cocina: comandas con su estado_cocina, ordenadas por llegada (id ASC). */
+  /** Cola de cocina: comandas con su estado_cocina e ITEMS, ordenadas por llegada. */
   async colaCocina() {
     const rows = await this.pedidos.find({ order: { id: 'ASC' } });
-    return rows
-      .filter((p) => ['recibida', 'preparando', 'lista', 'retirada'].includes(p.estado_cocina))
-      .map((p) => ({
+    const result = [];
+    for (const p of rows) {
+      if (!['recibida', 'preparando', 'lista', 'retirada'].includes(p.estado_cocina)) continue;
+      const items = await this.pedidoItems.find({ where: { id_pedido: p.id }, order: { id: 'ASC' } });
+      result.push({
         id: p.id,
         escenario: p.escenario,
         numero_mesa: p.numero_mesa,
@@ -296,7 +298,16 @@ export class PedidosService {
         total: p.total,
         hora_pedido: p.hora_pedido,
         creado_por: p.creado_por,
-      }));
+        items: items.map((it) => ({
+          nombre: it.nombre,
+          cantidad: it.cantidad,
+          tamanio: it.tamanio,
+          nota: it.nota,
+          subtotal: it.subtotal,
+        })),
+      });
+    }
+    return result;
   }
 
   /** Cambia el estado de cocina de una comanda y emite el evento en tiempo real. */
