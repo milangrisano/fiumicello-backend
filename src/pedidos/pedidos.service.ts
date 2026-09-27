@@ -284,7 +284,7 @@ export class PedidosService {
   /** Cola de cocina: comandas con su estado_cocina e ITEMS, ordenadas por llegada. */
   async colaCocina() {
     const rows = await this.pedidos.find({ order: { id: 'ASC' } });
-    const result = [];
+    const result: any[] = [];
     for (const p of rows) {
       if (!['recibida', 'preparando', 'lista', 'retirada'].includes(p.estado_cocina)) continue;
       const items = await this.pedidoItems.find({ where: { id_pedido: p.id }, order: { id: 'ASC' } });
