@@ -51,6 +51,10 @@ export class Venta {
   @Column({ type: 'boolean', nullable: false, default: false })
   anulada: boolean;
 
+  /// Motivo de la anulación (opcional) para trazabilidad de anulaciones.
+  @Column({ type: 'text', nullable: true })
+  motivo_anulacion: string | null;
+
   @Column({ type: 'text', nullable: true })
   fecha: string | null;
 }

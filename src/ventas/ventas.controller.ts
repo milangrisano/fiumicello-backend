@@ -84,8 +84,8 @@ export class VentasController {
 
   @Patch(':id/anular')
   @RequirePermiso(PERMISSIONS.ventas_eliminar)
-  anular(@Param('id', ParseIntPipe) id: number) {
-    return this.ventas.anular(id);
+  anular(@Param('id', ParseIntPipe) id: number, @Body() body: { motivo?: string | null }) {
+    return this.ventas.anular(id, body?.motivo);
   }
 
   // Borrado físico: SOLO superadmin (no usa @RequirePermiso, validamos rol).

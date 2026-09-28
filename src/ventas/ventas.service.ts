@@ -167,11 +167,12 @@ export class VentasService {
 
   /** Anula una venta: conserva el registro pero lo excluye de los totales,
    *  caja/arqueo y resúmenes. Requiere permiso ventas:eliminar. */
-  async anular(id: number): Promise<Venta> {
+  async anular(id: number, motivo?: string | null): Promise<Venta> {
     const v = await this.ventas.findOneBy({ id });
     if (!v) throw new NotFoundException('Venta no encontrada.');
     if (v.anulada) throw new BadRequestException('La venta ya está anulada.');
     v.anulada = true;
+    v.motivo_anulacion = (motivo && motivo.trim().length) ? motivo.trim() : null;
     return this.ventas.save(v);
   }
 
