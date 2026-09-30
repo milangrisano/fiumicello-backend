@@ -158,18 +158,34 @@ export class ResumenesService {
     const diasSorted = [...porDia.values()].sort((a, b) => b.monto - a.monto);
     if (diasSorted.length > 0) diaMayor = diasSorted[0];
 
-    // Serie diaria (para el gráfico de barras): por día, ordenada cronológicamente.
-    // Mantiene el formato ISO ordenable para poder hacer las barras por fecha.
-    const serieDia = [...porDia.entries()]
-      .map(([clave, ent]) => {
-        const [dd, mm, aaaa] = clave.split('/');
-        return {
-          fecha: `${aaaa}-${(mm.length === 1 ? '0' : '') + mm}-${(dd.length === 1 ? '0' : '') + dd}`,
-          etiqueta: clave,
-          monto: ent.monto,
-        };
-      })
-      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+    // Serie diaria para el gráfico de barras: TODOS los días del rango, en orden
+    // cronológico, con monto 0 en los días sin ventas (para el período completo).
+    const seriePorFecha = new Map<string, number>();
+    // Compacta la clave d/m/aaaa -> aaaa-mm-dd para cruzar con los días del rango.
+    for (const [clave, ent] of porDia) {
+      const [dd, mm, aaaa] = clave.split('/');
+      seriePorFecha.set(`${aaaa}-${(mm.length === 1 ? '0' : '') + mm}-${(dd.length === 1 ? '0' : '') + dd}`, ent.monto);
+    }
+    const serieDia: Array<{ fecha: string; etiqueta: string; monto: number }> = [];
+    const cursor = new Date(r.desde);
+    cursor.setHours(0, 0, 0, 0);
+    const fin = new Date(r.hasta);
+    fin.setHours(0, 0, 0, 0);
+    const z2 = (n: number) => String(n).padStart(2, '0');
+    let guardia = 0;
+    while (cursor.getTime() <= fin.getTime() && guardia < 372) {
+      const aaaa = cursor.getFullYear();
+      const mm = z2(cursor.getMonth() + 1);
+      const dd = z2(cursor.getDate());
+      const fechaKey = `${aaaa}-${mm}-${dd}`;
+      serieDia.push({
+        fecha: fechaKey,
+        etiqueta: `${cursor.getDate()}/${cursor.getMonth() + 1}/${aaaa}`,
+        monto: seriePorFecha.get(fechaKey) ?? 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+      guardia++;
+    }
 
     // Semana de mayor venta (suma por año-número de semana ISO)
     const porSemana = new Map<string, { semana: string; monto: number; n: number }>();
