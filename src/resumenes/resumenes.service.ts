@@ -158,6 +158,19 @@ export class ResumenesService {
     const diasSorted = [...porDia.values()].sort((a, b) => b.monto - a.monto);
     if (diasSorted.length > 0) diaMayor = diasSorted[0];
 
+    // Serie diaria (para el gráfico de barras): por día, ordenada cronológicamente.
+    // Mantiene el formato ISO ordenable para poder hacer las barras por fecha.
+    const serieDia = [...porDia.entries()]
+      .map(([clave, ent]) => {
+        const [dd, mm, aaaa] = clave.split('/');
+        return {
+          fecha: `${aaaa}-${(mm.length === 1 ? '0' : '') + mm}-${(dd.length === 1 ? '0' : '') + dd}`,
+          etiqueta: clave,
+          monto: ent.monto,
+        };
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
     // Semana de mayor venta (suma por año-número de semana ISO)
     const porSemana = new Map<string, { semana: string; monto: number; n: number }>();
     for (const v of ventas) {
@@ -201,6 +214,7 @@ export class ResumenesService {
           diasSorted.length > 0 ? totalMonto / diasSorted.length : 0,
       },
       items,
+      serie_dia: serieDia,
       kpis: {
         mas_vendido_cantidad: masVendidoCantidad,
         mas_vendido_monto: masVendidoMonto,
