@@ -9,7 +9,7 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
  * (detección de reuso).
  */
 @Entity('refresh_tokens')
-@Index(['id_usuario'])
+@Index(['idUsuario'])
 export class RefreshToken {
   @PrimaryGeneratedColumn()
   id: number;
