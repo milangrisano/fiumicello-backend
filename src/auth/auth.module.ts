@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { Usuario } from '../entities/usuario.entity';
 import { Rol } from '../entities/rol.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
@@ -13,7 +14,7 @@ import { RolesController } from './roles.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuario, Rol]),
+    TypeOrmModule.forFeature([Usuario, Rol, RefreshToken]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'fiumicello-dev-secret-change-me',
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '12h') as unknown as number },

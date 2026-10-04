@@ -15,6 +15,7 @@ import { PedidoItem } from './entities/pedido-item.entity';
 import { TurnoCaja } from './entities/turno-caja.entity';
 import { MovimientoCaja } from './entities/movimiento-caja.entity';
 import { PagoPropina } from './entities/pago-propina.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
 import { HealthController } from './health.controller';
 import { FacturasModule } from './facturas/facturas.module';
 import { ComprobantesModule } from './comprobantes/comprobantes.module';
@@ -55,6 +56,7 @@ import { PermisosGuard } from './auth/permisos.guard';
         Factura, FacturaItem, ComprobantePago, Usuario, Rol,
         CategoriaCarta, ItemCarta, Venta, VentaItem, FormaPago,
         Pedido, PedidoItem, TurnoCaja, MovimientoCaja, PagoPropina,
+        RefreshToken,
       ],
       synchronize: true,
       logging: false,

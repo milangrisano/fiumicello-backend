@@ -12,10 +12,18 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { Usuario, UserRole, UserStatus } from '../entities/usuario.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
 import { EmailService } from './email.service';
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const TOKEN_BYTES = 32; // 32 random bytes -> long base64 token
+
+// Refresh token (opaco) para sesiones de usuarios (OAuth-style, seguro).
+const REFRESH_BYTES = 48; // 48 random bytes -> 64 chars base64url
+const REFRESH_TTL_DAYS = 30; // vida del refresh token
+const REFRESH_COOKIE_NAME = 'fiumicello_rt'; // nombre de la cookie HttpOnly
+
+export { REFRESH_COOKIE_NAME };
 
 @Injectable()
 export class AuthService {
@@ -24,6 +32,8 @@ export class AuthService {
   constructor(
     @InjectRepository(Usuario)
     private readonly usuarios: Repository<Usuario>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokens: Repository<RefreshToken>,
     private readonly jwt: JwtService,
     private readonly email: EmailService,
   ) {}
@@ -48,6 +58,57 @@ export class AuthService {
       email: user.email,
       rol: user.rol,
     });
+  }
+
+  // ======================= Refresh tokens (OAuth-style, seguro) =======================
+
+  private hashRefresh(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private rawRefresh(): string {
+    return crypto.randomBytes(REFRESH_BYTES).toString('base64url');
+  }
+
+  private async persistRefresh(idUsuario: number, token: string, reemplazadoPor?: number) {
+    const expiraMs = Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000;
+    await this.refreshTokens.save(
+      this.refreshTokens.create({
+        idUsuario,
+        token_hash: this.hashRefresh(token),
+        expira: new Date(expiraMs).toISOString(),
+        reemplazadoPor: reemplazadoPor ?? null,
+        revocado: false,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  /** Revoca todas las cadenas de refresh de un usuario (session hardening). */
+  private async revokeAllRefresh(idUsuario: number) {
+    await this.refreshTokens
+      .createQueryBuilder()
+      .update()
+      .set({ revocado: true })
+      .where('id_usuario = :id AND revocado = false', { id: idUsuario })
+      .execute();
+  }
+
+  /** Cookie HttpOnly para el refresh token (gate por HTTPS en 'Secure' si aplica). */
+  refreshCookie(rawToken: string | null, secure: boolean) {
+    const attrs = ['Path=/', 'HttpOnly', 'SameSite=Lax'];
+    if (secure) attrs.push('Secure');
+    if (rawToken == null) {
+      attrs.push('Max-Age=0'); // borrar cookie
+      return `${REFRESH_COOKIE_NAME}=; ${attrs.join('; ')}`;
+    }
+    attrs.push('Max-Age=' + (REFRESH_TTL_DAYS * 24 * 60 * 60));
+    return `${REFRESH_COOKIE_NAME}=${rawToken}; ${attrs.join('; ')}`;
+  }
+
+  /** ¿El entorno debe marcar la cookie como Secure? (HTTP plano de red interna => off). */
+  static get cookieSecure(): boolean {
+    return (process.env.COOKIE_SECURE || 'false').toLowerCase() === 'true';
   }
 
   // ---- registration: step 1 (send code) ----
@@ -190,10 +251,79 @@ export class AuthService {
     if (user.estado === 'desactivado') {
       throw new UnauthorizedException('Tu cuenta está desactivada.');
     }
+    // Access token (corto) + refresh token (opaco, rotado, hash en BD).
+    const refresh = this.rawRefresh();
+    await this.persistRefresh(user.id, refresh);
     return {
       access_token: await this.buildJwt(user),
+      refresh_token: refresh,
       user: { id: user.id, email: user.email, rol: user.rol, estado: user.estado },
     };
+  }
+
+  /**
+   * Refresh de sesión: valida y rota el refresh recibido (de la cookie), emite un
+   * access nuevo + un refresh nuevo (rotación). Devuelve null si el refresh es
+   * inválido o la cadena fue comprometida (reuso).
+   */
+  async refresh(rawToken: string) {
+    if (!rawToken || rawToken.length === 0) {
+      throw new UnauthorizedException('Sesión expirada.');
+    }
+    // Buscar el id_usuario: el token viene opaco, hay que localizar por hash.
+    const hash = this.hashRefresh(rawToken);
+    const row = await this.refreshTokens.findOne({ where: { token_hash: hash } });
+    if (!row) {
+      throw new UnauthorizedException('Sesión expirada.');
+    }
+    const user = await this.usuarios.findOneBy({ id: row.idUsuario });
+    if (!user || user.estado !== 'aprobado') {
+      throw new UnauthorizedException('Sesión inválida.');
+    }
+    // Reuso detectado -> revocar toda la cadena y rechazar.
+    if (row.revocado || row.reemplazadoPor != null) {
+      this.revokeAllRefresh(user.id);
+      throw new UnauthorizedException('Sesión comprometida.');
+    }
+    if (new Date(row.expira).getTime() < Date.now()) {
+      throw new UnauthorizedException('Sesión expirada.');
+    }
+    // Rotación normal.
+    const nuevo = this.rawRefresh();
+    const nuevoRow = await this.refreshTokens.save(
+      this.refreshTokens.create({
+        idUsuario: user.id,
+        token_hash: this.hashRefresh(nuevo),
+        expira: new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+        reemplazadoPor: null,
+        revocado: false,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    await this.refreshTokens
+      .createQueryBuilder()
+      .update()
+      .set({ revocado: true, reemplazadoPor: nuevoRow.id })
+      .where('id = :id', { id: row.id })
+      .execute();
+    return {
+      access_token: await this.buildJwt(user),
+      refresh_token: nuevo,
+      user: { id: user.id, email: user.email, rol: user.rol, estado: user.estado },
+    };
+  }
+
+  /** Cierre de sesión: revoca el refresh del dispositivo (cookie). */
+  async logout(rawToken: string) {
+    if (rawToken && rawToken.length > 0) {
+      const hash = this.hashRefresh(rawToken);
+      await this.refreshTokens
+        .createQueryBuilder()
+        .update()
+        .set({ revocado: true })
+        .where('token_hash = :hash', { hash })
+        .execute();
+    }
   }
 
   // ---- authenticate by service token (herb & services) ----

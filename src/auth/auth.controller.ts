@@ -9,12 +9,27 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Req,
+  Res,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { Request, Response } from 'express';
+import { AuthService, REFRESH_COOKIE_NAME } from './auth.service';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
 import { RolesPermisosService } from './roles-permisos.service';
 import { CurrentUser, JwtUser } from './current-user.decorator';
+
+/** Lee el valor de una cookie desde el header 'Cookie' (sin cookie-parser). */
+function cookieValue(req: Request, name: string): string {
+  const header: string = req.headers?.cookie ?? '';
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    if (k === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return '';
+}
 
 @Controller('auth')
 export class AuthController {
@@ -63,8 +78,37 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() body: { email?: string; password?: string }) {
-    return this.auth.login(body.email || '', body.password || '');
+  async login(
+    @Body() body: { email?: string; password?: string },
+    @Res() res: Response,
+  ) {
+    const r = await this.auth.login(body.email || '', body.password || '');
+    // El refresh token se entrega SOLO como cookie HttpOnly (no en el body, no
+    // legible por JS). El access va en el body para usarse en memoria.
+    res.setHeader('Set-Cookie', this.auth.refreshCookie(r.refresh_token, AuthService.cookieSecure));
+    return { access_token: r.access_token, user: r.user };
+  }
+
+  // ---- Refresh de sesión (lee la cookie HttpOnly, rota y emite access nuevo) ----
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const raw = cookieValue(req, REFRESH_COOKIE_NAME);
+    const r = await this.auth.refresh(raw);
+    res.setHeader('Set-Cookie', this.auth.refreshCookie(r.refresh_token, AuthService.cookieSecure));
+    return { access_token: r.access_token, user: r.user };
+  }
+
+  // ---- Logout: revoca el refresh de este dispositivo y borra la cookie ----
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const raw = cookieValue(req, REFRESH_COOKIE_NAME);
+    await this.auth.logout(raw);
+    res.setHeader('Set-Cookie', this.auth.refreshCookie(null, AuthService.cookieSecure));
+    return { ok: true, message: 'Sesión cerrada.' };
   }
 
   // ---- Password reset: request ----
