@@ -1,5 +1,4 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { Usuario } from './usuario.entity';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 /**
  * Refresh tokens de sesión (OAuth-style, seguro).
@@ -15,10 +14,7 @@ export class RefreshToken {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Usuario, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'id_usuario' })
-  usuario: Usuario;
-
+  // Id del usuario dueño de la sesión (FK lógica a usuarios.id).
   @Column({ type: 'int', name: 'id_usuario' })
   idUsuario: number;
 
