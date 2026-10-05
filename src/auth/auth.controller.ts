@@ -86,7 +86,7 @@ export class AuthController {
     // El refresh token se entrega SOLO como cookie HttpOnly (no en el body, no
     // legible por JS). El access va en el body para usarse en memoria.
     res.setHeader('Set-Cookie', this.auth.refreshCookie(r.refresh_token, AuthService.cookieSecure));
-    return { access_token: r.access_token, user: r.user };
+    res.status(HttpStatus.OK).json({ access_token: r.access_token, user: r.user });
   }
 
   // ---- Refresh de sesión (lee la cookie HttpOnly, rota y emite access nuevo) ----
@@ -97,7 +97,7 @@ export class AuthController {
     const raw = cookieValue(req, REFRESH_COOKIE_NAME);
     const r = await this.auth.refresh(raw);
     res.setHeader('Set-Cookie', this.auth.refreshCookie(r.refresh_token, AuthService.cookieSecure));
-    return { access_token: r.access_token, user: r.user };
+    res.status(HttpStatus.OK).json({ access_token: r.access_token, user: r.user });
   }
 
   // ---- Logout: revoca el refresh de este dispositivo y borra la cookie ----
@@ -108,7 +108,7 @@ export class AuthController {
     const raw = cookieValue(req, REFRESH_COOKIE_NAME);
     await this.auth.logout(raw);
     res.setHeader('Set-Cookie', this.auth.refreshCookie(null, AuthService.cookieSecure));
-    return { ok: true, message: 'Sesión cerrada.' };
+    res.status(HttpStatus.OK).json({ ok: true, message: 'Sesión cerrada.' });
   }
 
   // ---- Password reset: request ----
