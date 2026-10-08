@@ -9,6 +9,7 @@ import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
+import { nowLocalISO } from '../common/date-utils';
 
 export interface CreateVentaInput {
   escenario: 'mesa' | 'para_llevar' | 'domicilio';
@@ -117,7 +118,7 @@ export class VentasService {
         forma_pago_nombre: formaPagoNombre,
         total,
         creado_por: usuarioId ?? null,
-        fecha: new Date().toISOString(),
+        fecha: nowLocalISO(),
       });
       await em.getRepository(Venta).save(v);
 

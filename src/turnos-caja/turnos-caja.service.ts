@@ -5,6 +5,7 @@ import { TurnoCaja } from '../entities/turno-caja.entity';
 import { MovimientoCaja } from '../entities/movimiento-caja.entity';
 import { Venta } from '../entities/venta.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { nowLocalISO, hoyLocal, nowLocalDate } from '../common/date-utils';
 
 export interface ArqueoResult {
   turno: TurnoCaja;
@@ -43,13 +44,13 @@ export class TurnosCajaService {
   async abrir(idCajero: number, efectivoInicial: number): Promise<TurnoCaja> {
     const existente = await this.abierto(idCajero);
     if (existente) throw new BadRequestException('Ya tiene un turno de caja abierto.');
-    const fechaHoy = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const fechaHoy = hoyLocal(); // YYYY-MM-DD local (America/Bogota)
     const delDia = await this.turnos.count({
       where: { fecha: Like(`${fechaHoy}%`) } as any,
     });
     const t = this.turnos.create({
       id_cajero: idCajero,
-      fecha: new Date().toISOString(),
+      fecha: nowLocalISO(),
       numero_dia: delDia + 1,
       estado: 'abierto',
       efectivo_inicial: efectivoInicial,
@@ -138,7 +139,7 @@ export class TurnosCajaService {
     }
     t.diferencia = 0;
     t.estado = 'cerrado';
-    t.cierre_at = new Date();
+    t.cierre_at = nowLocalDate();
     const cerrado = await this.turnos.save(t);
     this.realtime.emitTurnoCerrado({ id: cerrado.id });
     return cerrado;

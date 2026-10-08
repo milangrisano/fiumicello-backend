@@ -13,6 +13,7 @@ import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { TurnosCajaService } from '../turnos-caja/turnos-caja.service';
+import { nowLocalISO } from '../common/date-utils';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface AddItemInput {
@@ -232,7 +233,7 @@ export class PedidosService {
         forma_pago_nombre: p.forma_pago_nombre,
         total: p.total,
         creado_por: p.creado_por,
-        fecha: new Date().toISOString(),
+        fecha: nowLocalISO(),
         id_turno: turno.id,
       });
       await ventaRepo.save(v);
