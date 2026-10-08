@@ -41,3 +41,18 @@ export function toLocalISO(val: Date | string): string {
 export function nowLocalDate(): Date {
   return new Date(Date.now() + TZ_OFFSET_MS);
 }
+
+/** Descompone un Date (instante) en componentes {y, m, d} en la zona America/Bogota,
+ *  SIN depender de la zona horaria del servidor. Devuelve m y d en base 1. */
+export function partesFechaBogota(
+  d: Date,
+): { y: number; m: number; d: number } {
+  const s = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+  const [y, m, dd] = s.split('-').map(Number);
+  return { y, m, d: dd };
+}

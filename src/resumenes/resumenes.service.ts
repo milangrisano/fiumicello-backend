@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
+import { partesFechaBogota } from '../common/date-utils';
 
 export interface RangoPeriodo {
   desde: Date;
@@ -149,8 +150,8 @@ export class ResumenesService {
     const porDia = new Map<string, { dia: string; monto: number }>();
     for (const v of ventas) {
       if (!v.fecha) continue;
-      const d = new Date(v.fecha);
-      const clave = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      const { y, m, d } = partesFechaBogota(new Date(v.fecha));
+      const clave = `${d}/${m}/${y}`;
       const ent = porDia.get(clave) ?? { dia: clave, monto: 0 };
       ent.monto += Number(v.total ?? 0);
       porDia.set(clave, ent);
@@ -192,9 +193,8 @@ export class ResumenesService {
     for (const v of ventas) {
       if (!v.fecha) continue;
       const d = new Date(v.fecha);
-      const y = d.getFullYear();
-      const dx = new Date(Date.UTC(y, d.getMonth(), d.getDate()));
-      const dayOfYear = (Date.UTC(y, d.getMonth(), d.getDate()) - Date.UTC(y, 0, 0)) / (24 * 60 * 60 * 1000);
+      const { y, m, d: dd } = partesFechaBogota(d);
+      const dayOfYear = (Date.UTC(y, m - 1, dd) - Date.UTC(y, 0, 0)) / (24 * 60 * 60 * 1000);
       const semana = Math.ceil((dayOfYear + new Date(Date.UTC(y, 0, 1)).getDay()) / 7);
       const clave = `${y}-S${semana}`;
       const ent = porSemana.get(clave) ?? { semana: `${y} · Sem. ${semana}`, monto: 0, n: semana };
@@ -208,9 +208,9 @@ export class ResumenesService {
     const porMes = new Map<string, { mes: string; monto: number }>();
     for (const v of ventas) {
       if (!v.fecha) continue;
-      const d = new Date(v.fecha);
-      const clave = `${d.getFullYear()}-${d.getMonth() + 1}`;
-      const ent = porMes.get(clave) ?? { mes: `${d.getMonth() + 1}/${d.getFullYear()}`, monto: 0 };
+      const { y, m } = partesFechaBogota(new Date(v.fecha));
+      const clave = `${y}-${m}`;
+      const ent = porMes.get(clave) ?? { mes: `${m}/${y}`, monto: 0 };
       ent.monto += Number(v.total ?? 0);
       porMes.set(clave, ent);
     }
