@@ -48,8 +48,8 @@ export class Pedido {
   @Column({ type: 'numeric', precision: 18, scale: 2, nullable: false, default: 0 })
   total: number;
 
-  // Visible consecutive invoice number, set when charged (F-000N).
-  @Column({ type: 'text', nullable: true })
+  // Visible consecutive invoice number, set when charged (F-000N). Unique (fail loud).
+  @Column({ type: 'text', nullable: true, unique: true })
   numero_factura: string | null;
 
   @Column({ type: 'integer', nullable: true })

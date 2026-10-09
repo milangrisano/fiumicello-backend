@@ -10,6 +10,7 @@ import { VentaItem } from '../entities/venta-item.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
 import { nowLocalISO } from '../common/date-utils';
+import { CorrelativoService } from '../common/correlativo.service';
 
 export interface CreateVentaInput {
   escenario: 'mesa' | 'para_llevar' | 'domicilio';
@@ -34,20 +35,16 @@ export class VentasService {
     @InjectRepository(FormaPago)
     private readonly formasPago: Repository<FormaPago>,
     private readonly dataSource: DataSource,
+    private readonly correlativo: CorrelativoService,
   ) {}
 
-  /** Next visible consecutive invoice number (F-0001, F-0002, ...). */
+  /**
+   * Next visible consecutive invoice number (F-0001, F-0002, ...).
+   * Delegates to the central Postgres SEQUENCE (atomic, race-free, shared with
+   * comandas/pedidos). Solves duplicate invoice numbers.
+   */
   private async siguienteNumeroFactura(): Promise<string> {
-    const last = await this.ventas
-      .createQueryBuilder('v')
-      .orderBy('v.id', 'DESC')
-      .getOne();
-    let n = 0;
-    if (last) {
-      const m = /F-(\d+)/.exec(last.numero_factura || '');
-      if (m) n = parseInt(m[1], 10);
-    }
-    return `F-${String(n + 1).padStart(4, '0')}`;
+    return this.correlativo.siguiente();
   }
 
   async crear(datos: CreateVentaInput, usuarioId: number): Promise<Venta> {

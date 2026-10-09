@@ -9,9 +9,10 @@ import { PedidosService } from './pedidos.service';
 import { PedidosController } from './pedidos.controller';
 import { TurnosCajaModule } from '../turnos-caja/turnos-caja.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { CorrelativoModule } from '../common/correlativo.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem]), TurnosCajaModule, RealtimeModule],
+  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem]), TurnosCajaModule, RealtimeModule, CorrelativoModule],
   controllers: [PedidosController],
   providers: [PedidosService],
   exports: [PedidosService],

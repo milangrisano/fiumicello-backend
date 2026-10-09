@@ -10,8 +10,8 @@ export class Venta {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Visible consecutive invoice number (e.g. F-0001). Unique.
-  @Column({ type: 'text', nullable: false })
+  // Visible consecutive invoice number (e.g. F-0001). Unique (fail loud on dupes).
+  @Column({ type: 'text', nullable: false, unique: true })
   numero_factura: string;
 
   // mesa | para_llevar | domicilio

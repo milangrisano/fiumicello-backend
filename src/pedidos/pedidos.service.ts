@@ -14,6 +14,7 @@ import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { TurnosCajaService } from '../turnos-caja/turnos-caja.service';
 import { nowLocalISO } from '../common/date-utils';
+import { CorrelativoService } from '../common/correlativo.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface AddItemInput {
@@ -48,6 +49,7 @@ export class PedidosService {
     private readonly dataSource: DataSource,
     private readonly turnosCaja: TurnosCajaService,
     private readonly realtime: RealtimeGateway,
+    private readonly correlativo: CorrelativoService,
     ) {}
 
   private precio(prod: ItemCarta, tamanio?: string | null): number {
@@ -329,17 +331,7 @@ export class PedidosService {
   }
 
   private async siguienteNumeroFactura(): Promise<string> {
-    const last = await this.pedidos
-      .createQueryBuilder('p')
-      .where('p.numero_factura IS NOT NULL')
-      .orderBy('p.id', 'DESC')
-      .getOne();
-    let n = 0;
-    if (last && last.numero_factura) {
-      const m = /F-(\d+)/.exec(last.numero_factura);
-      if (m) n = parseInt(m[1], 10);
-    }
-    return `F-${String(n + 1).padStart(4, '0')}`;
+    return this.correlativo.siguiente();
   }
 }
 

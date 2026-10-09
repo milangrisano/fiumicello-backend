@@ -28,6 +28,8 @@ import { PedidosModule } from './pedidos/pedidos.module';
 import { PedidosService } from './pedidos/pedidos.service';
 import { ResumenesModule } from './resumenes/resumenes.module';
 import { TurnosCajaModule } from './turnos-caja/turnos-caja.module';
+import { CorrelativoModule } from './common/correlativo.module';
+import { CorrelativoService } from './common/correlativo.service';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
@@ -71,6 +73,7 @@ import { PermisosGuard } from './auth/permisos.guard';
     TurnosCajaModule,
     RealtimeModule,
     AuthModule,
+    CorrelativoModule,
   ],
 })
 export class AppModule implements OnModuleInit {
@@ -80,6 +83,7 @@ export class AppModule implements OnModuleInit {
     private readonly carta: CartaService,
     private readonly ventas: VentasService,
     private readonly pedidos: PedidosService,
+    private readonly correlativo: CorrelativoService,
   ) {}
 
   async onModuleInit() {
@@ -87,5 +91,7 @@ export class AppModule implements OnModuleInit {
     await this.roles.seedBaseRoles();
     await this.carta.seedIfEmpty();
     await this.ventas.seedFormasPago();
+    // Secuencia central de numeracion (F-0001...) compartida por comandas/ventas.
+    await this.correlativo.asegurarSecuencia();
   }
 }
