@@ -23,4 +23,10 @@ export class ResumenesController {
       : 'día';
     return this.resumenes.resumen(p, referencia);
   }
+
+  @Get('ultima-fecha')
+  @RequirePermiso('resumenes:ver')
+  ultimaFecha() {
+    return this.resumenes.ultimaFecha();
+  }
 }

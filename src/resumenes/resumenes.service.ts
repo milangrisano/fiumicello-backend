@@ -257,4 +257,21 @@ export class ResumenesService {
       },
     };
   }
+
+  /** Última fecha (día) con ventas no anuladas, en zona America/Bogota (YYYY-MM-DD). */
+  async ultimaFecha(): Promise<string | null> {
+    const rows = await this.ventas
+      .createQueryBuilder('v')
+      .select(['v.fecha as fecha'])
+      .where('v.anulada = false')
+      .orderBy('v.fecha', 'DESC')
+      .take(1)
+      .getRawMany<{ fecha: string }>();
+    if (!rows || rows.length === 0 || !rows[0] || !rows[0].fecha) {
+      return null;
+    }
+    const { y, m, d } = partesFechaBogota(new Date(rows[0].fecha));
+    const z = (n: number) => String(n).padStart(2, '0');
+    return `${y}-${z(m)}-${z(d)}`;
+  }
 }
