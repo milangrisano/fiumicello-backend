@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
+import { Factura } from '../entities/factura.entity';
+import { ComprobantePago } from '../entities/comprobante.entity';
 import { partesFechaBogota } from '../common/date-utils';
 
 export interface RangoPeriodo {
@@ -16,6 +18,9 @@ export class ResumenesService {
   constructor(
     @InjectRepository(Venta) private readonly ventas: Repository<Venta>,
     @InjectRepository(VentaItem) private readonly ventaItems: Repository<VentaItem>,
+    @InjectRepository(Factura) private readonly facturas: Repository<Factura>,
+    @InjectRepository(ComprobantePago)
+    private readonly comprobantes: Repository<ComprobantePago>,
   ) {}
 
   /** Convierte fecha ISO/date a inicio-fin + etiqueta para el período. */
@@ -273,5 +278,139 @@ export class ResumenesService {
     const { y, m, d } = partesFechaBogota(new Date(rows[0].fecha));
     const z = (n: number) => String(n).padStart(2, '0');
     return `${y}-${z(m)}-${z(d)}`;
+  }
+
+  /** Resumen contable (haber/deber) para un período: ventas vs gastos.
+   *
+   * - ventas       = ingresos (no anuladas) del período
+   * - facturas     = gastos/costos (deber) del período
+   * - comprobantes = movimientos de dinero (haber) del período
+   * - utilidad     = ventas − facturas
+   *
+   * Concilación: si una factura tiene id_comprobante (o el comprobante tiene
+   * id_factura), se marca como "conciliada". El resto queda para asignación
+   * manual por interfaz gráfica (trasabilidad del pago de cada factura).
+   */
+  async contable(
+    periodo: 'año' | 'mes' | 'semana' | 'día' | 'rango',
+    referencia?: string | null,
+    desde?: string | null,
+    hasta?: string | null,
+  ) {
+    const r = this.rango(periodo, referencia, desde, hasta);
+    const d = r.desde.toISOString();
+    const h = r.hasta.toISOString();
+    const dFecha = d.slice(0, 10);
+    const hFecha = h.slice(0, 10);
+
+    // Ventas del período
+    const ventas = await this.ventas
+      .createQueryBuilder('v')
+      .where('v.fecha IS NOT NULL AND v.anulada = false')
+      .andWhere('substr(v.fecha,1,10) >= :d', { d: dFecha })
+      .andWhere('substr(v.fecha,1,10) <= :h', { h: hFecha })
+      .orderBy('v.fecha', 'ASC')
+      .getMany();
+    const montoVentas = ventas.reduce((s, x) => s + Number(x.total ?? 0), 0);
+
+    // Facturas (gastos) del período
+    const facturas = await this.facturas
+      .createQueryBuilder('f')
+      .where('f.fecha IS NOT NULL')
+      .andWhere('substr(f.fecha,1,10) >= :d', { d: dFecha })
+      .andWhere('substr(f.fecha,1,10) <= :h', { h: hFecha })
+      .orderBy('f.fecha', 'ASC')
+      .getMany();
+    const montoFacturas = facturas.reduce((s, x) => s + Number(x.total_con_impuestos ?? 0), 0);
+
+    // Comprobantes (haber/movimientos) del período
+    const comprobantes = await this.comprobantes
+      .createQueryBuilder('c')
+      .where('c.fecha IS NOT NULL')
+      .andWhere('substr(c.fecha,1,10) >= :d', { d: dFecha })
+      .andWhere('substr(c.fecha,1,10) <= :h', { h: hFecha })
+      .orderBy('c.fecha', 'ASC')
+      .getMany();
+    const montoComprobantes = comprobantes.reduce(
+      (s, x) => s + Number(x.total_con_impuestos ?? 0),
+      0,
+    );
+
+    const num = (v: any) => Number(v ?? 0);
+
+    return {
+      periodo,
+      etiqueta: r.etiqueta,
+      desde: r.desde.toISOString(),
+      hasta: r.hasta.toISOString(),
+      ventas: { monto: montoVentas, count: ventas.length },
+      facturas: { monto: montoFacturas, count: facturas.length },
+      comprobantes: { monto: montoComprobantes, count: comprobantes.length },
+      utilidad: montoVentas - montoFacturas,
+      // Detalle de facturas con su conciliación (para la asignación manual).
+      facturas_detalle: facturas.map((f) => ({
+        id: f.id,
+        fecha: f.fecha,
+        numero_factura: f.numero_factura,
+        proveedor: f.proveedor,
+        monto: num(f.total_con_impuestos),
+        // Conciliada si tiene comprobante asignado por cualquiera de los dos links.
+        conciliada:
+          f.id_comprobante != null ||
+          this.comprobanteVinculado(comprobantes, f),
+        id_comprobante: f.id_comprobante,
+        referencia_comprobante: f.referencia_comprobante,
+      })),
+      // Comprobantes del período (haber).
+      comprobantes_detalle: comprobantes.map((c) => ({
+        id: c.id,
+        fecha: c.fecha,
+        referencia: c.referencia,
+        beneficiario: c.beneficiario_emisor,
+        monto: num(c.total_con_impuestos),
+        conciliado: c.id_factura != null,
+        id_factura: c.id_factura,
+      })),
+    };
+  }
+
+  /** true si algún comprobante del período ya apunta a esta factura. */
+  private comprobanteVinculado(
+    comprobantes: ComprobantePago[],
+    f: Factura,
+  ): boolean {
+    return comprobantes.some(
+      (c) =>
+        c.id_factura === f.id ||
+        (f.referencia_comprobante != null &&
+          c.referencia != null &&
+          c.referencia === f.referencia_comprobante) ||
+        (f.numero_factura != null && c.numero_factura === f.numero_factura),
+    );
+  }
+
+  /** Asigna manualmente un comprobante de pago a una factura (trasabilidad del
+   *  pago). Escribe el cross-link en AMBOS sentidos: factura.id_comprobante y
+   *  comprobante_pago.id_factura. Igual idempotente. */
+  async asignarComprobante(
+    facturaId: number,
+    comprobanteId: number,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    const factura = await this.facturas.findOneBy({ id: facturaId });
+    if (!factura) return { ok: false, mensaje: 'Factura no encontrada.' };
+    const comprobante = await this.comprobantes.findOneBy({ id: comprobanteId });
+    if (!comprobante) return { ok: false, mensaje: 'Comprobante no encontrado.' };
+
+    factura.id_comprobante = comprobante.id;
+    factura.referencia_comprobante = comprobante.referencia;
+    comprobante.id_factura = factura.id;
+    comprobante.numero_factura = factura.numero_factura;
+
+    await this.facturas.save(factura);
+    await this.comprobantes.save(comprobante);
+    return {
+      ok: true,
+      mensaje: `Factura ${factura.numero_factura ?? factura.id} vinculada al comprobante ${comprobante.referencia ?? comprobante.id}.`,
+    };
   }
 }
