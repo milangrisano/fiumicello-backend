@@ -20,9 +20,24 @@ export class ResumenesService {
 
   /** Convierte fecha ISO/date a inicio-fin + etiqueta para el período. */
   rango(
-    periodo: 'año' | 'mes' | 'semana' | 'día',
+    periodo: 'año' | 'mes' | 'semana' | 'día' | 'rango',
     referencia?: string | null,
+    desde?: string | null,
+    hasta?: string | null,
   ): RangoPeriodo {
+    // Rango libre (elección de calendario): se usa directamente desde/hasta.
+    if (periodo === 'rango') {
+      if (!desde || !hasta) {
+        throw new Error('Se requiere desde y hasta para un período rango.');
+      }
+      const dIni = new Date(`${desde}T00:00:00`);
+      const dFin = new Date(`${hasta}T23:59:59`);
+      return {
+        desde: dIni,
+        hasta: dFin,
+        etiqueta: `${desde} → ${hasta}`,
+      };
+    }
     const ref = referencia && referencia.trim() ? new Date(referencia) : new Date();
     const z = (n: number) => String(n).padStart(2, '0');
     switch (periodo) {
@@ -77,10 +92,12 @@ export class ResumenesService {
 
   /** Resumen agregado: totales, por ítems y KPIs. */
   async resumen(
-    periodo: 'año' | 'mes' | 'semana' | 'día',
+    periodo: 'año' | 'mes' | 'semana' | 'día' | 'rango',
     referencia?: string | null,
+    desde?: string | null,
+    hasta?: string | null,
   ) {
-    const r = this.rango(periodo, referencia);
+    const r = this.rango(periodo, referencia, desde, hasta);
     const ventas = await this.ventas
       .createQueryBuilder('v')
       .where('v.fecha IS NOT NULL')

@@ -11,7 +11,13 @@ export class ResumenesController {
   obtener(
     @Query('periodo') periodo?: string,
     @Query('referencia') referencia?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
   ) {
+    // Rango libre (desde→hasta) tiene prioridad si ambos llegan.
+    if (desde && hasta) {
+      return this.resumenes.resumen('rango', null, desde, hasta);
+    }
     const p = ['año', 'mes', 'semana', 'día'].includes(periodo || '')
       ? (periodo as 'año' | 'mes' | 'semana' | 'día')
       : 'día';
