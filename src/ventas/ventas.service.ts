@@ -140,15 +140,29 @@ export class VentasService {
   }
 
   /** List sales with their items (for history). */
-  async listar(limit = 50, offset = 0, idTurno?: number) {
+  async listar(limit = 50, offset = 0, idTurno?: number, desde?: string, hasta?: string) {
     const where: any = {};
     if (idTurno) where.id_turno = idTurno;
-    const rows = await this.ventas.find({
-      where,
-      order: { id: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+    let rows: Venta[];
+    if (desde && hasta) {
+      // Filtro por rango de fechas (zona local Bogotá: se compara el prefijo YYYY-MM-DD).
+      rows = await this.ventas
+        .createQueryBuilder('v')
+        .where('v.fecha IS NOT NULL')
+        .andWhere('substr(v.fecha,1,10) >= :desde', { desde })
+        .andWhere('substr(v.fecha,1,10) <= :hasta', { hasta })
+        .orderBy('v.id', 'DESC')
+        .take(limit)
+        .skip(offset)
+        .getMany();
+    } else {
+      rows = await this.ventas.find({
+        where,
+        order: { id: 'DESC' },
+        take: limit,
+        skip: offset,
+      });
+    }
     const items = await this.ventaItems.find();
     return rows.map((v) => ({
       ...v,
