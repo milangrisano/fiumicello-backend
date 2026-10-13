@@ -340,15 +340,26 @@ export class ResumenesService {
 
     // Clasificación de comprobantes: cuentas personales del restaurante =
     // "transferencia a otras cuentas"; el resto = "pago a proveedores".
+    // Override manual: si el comprobante tiene tipo_manual, ese manda.
+    const CUENTAS_PERSONALES = [
+      '3123524512', // Nequi
+      '71800004915', // Bancolombia 718-000049-15
+      '71800004889', // Bancolombia 718-000048-89
+      '58200046798', // Bancolombia 582-000467-98
+    ];
     const esCuentaPersonal = (s: string | null | undefined): boolean => {
       if (!s) return false;
       const t = s.toLowerCase();
-      return (
+      if (
         t.includes('la vera trattoria') ||
         t.includes('enrique angrisano') ||
-        t.includes('nequi enrique') ||
-        t.includes('3123524512')
-      );
+        t.includes('nequi enrique')
+      ) {
+        return true;
+      }
+      // Comparar por dígitos (ignora guiones/espacios/puntos).
+      const soloDigitos = t.replace(/\D/g, '');
+      return CUENTAS_PERSONALES.some((cuenta) => soloDigitos.includes(cuenta));
     };
 
     const comprobantesDetalle = comprobantes.map((c) => ({
@@ -359,9 +370,11 @@ export class ResumenesService {
       monto: num(c.total_con_impuestos),
       conciliado: c.id_factura != null,
       id_factura: c.id_factura,
-      tipo: esCuentaPersonal(c.beneficiario_emisor)
-        ? 'transferencia'
-        : 'proveedor',
+      // El tipo manual (si existe) tiene prioridad sobre la regla automática.
+      tipo:
+        c.tipo_manual ??
+        (esCuentaPersonal(c.beneficiario_emisor) ? 'transferencia' : 'proveedor'),
+      tipo_manual: c.tipo_manual,
     }));
 
     const montoTransferencias = comprobantesDetalle
@@ -450,6 +463,28 @@ export class ResumenesService {
     return {
       ok: true,
       mensaje: `Factura ${factura.numero_factura ?? factura.id} vinculada al comprobante ${comprobante.referencia ?? comprobante.id}.`,
+    };
+  }
+
+  /** Guarda la clasificación MANUAL de un comprobante (override de la regla
+   *  automática por beneficiario). 'transferencia' | 'proveedor' | null (auto). */
+  async clasificarComprobante(
+    comprobanteId: number,
+    tipo: 'transferencia' | 'proveedor' | null,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    const comprobante = await this.comprobantes.findOneBy({ id: comprobanteId });
+    if (!comprobante) return { ok: false, mensaje: 'Comprobante no encontrado.' };
+    comprobante.tipo_manual = tipo;
+    await this.comprobantes.save(comprobante);
+    const etiqueta =
+      tipo === 'transferencia'
+        ? 'Transferencia'
+        : tipo === 'proveedor'
+          ? 'Pago a proveedor'
+          : 'Automático';
+    return {
+      ok: true,
+      mensaje: `Comprobante ${comprobante.referencia ?? comprobante.id}: ${etiqueta}.`,
     };
   }
 }

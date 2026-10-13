@@ -57,4 +57,15 @@ export class ResumenesController {
   ) {
     return this.resumenes.asignarComprobante(facturaId, comprobanteId);
   }
+
+  // Clasificación MANUAL de un comprobante (transferencia / proveedor / auto).
+  @Patch('clasificar-comprobante')
+  @HttpCode(200)
+  @RequirePermiso('resumenes:ver')
+  clasificarComprobante(
+    @Body('comprobanteId') comprobanteId: number,
+    @Body('tipo') tipo: 'transferencia' | 'proveedor' | null,
+  ) {
+    return this.resumenes.clasificarComprobante(comprobanteId, tipo ?? null);
+  }
 }
