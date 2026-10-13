@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { extraer4 } from './factura.entity';
 
 @Entity('comprobantes_pago')
 export class ComprobantePago {
@@ -60,4 +61,14 @@ export class ComprobantePago {
   // beneficiario): 'transferencia' | 'proveedor' | null (auto).
   @Column({ type: 'text', nullable: true })
   tipo_manual: string | null;
+
+  // Últimos 4 dígitos hallados en el método de pago (identifica cuenta/tarjeta).
+  @Column({ type: 'text', nullable: true })
+  metodo_pago_ultimos4: string | null;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  calcularUltimos4() {
+    this.metodo_pago_ultimos4 = extraer4(this.metodo_pago);
+  }
 }

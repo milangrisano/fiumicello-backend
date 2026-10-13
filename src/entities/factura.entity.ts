@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate } from 'typeorm';
 
 @Entity('facturas')
 export class Factura {
@@ -51,5 +51,23 @@ export class Factura {
  id_comprobante: number | null;
 
   @Column({ type: 'text', nullable: true })
- referencia_comprobante: string | null;
+  referencia_comprobante: string | null;
+
+  // Últimos 4 dígitos hallados en el método de pago (identifica cuenta/tarjeta).
+  @Column({ type: 'text', nullable: true })
+  metodo_pago_ultimos4: string | null;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  calcularUltimos4() {
+    this.metodo_pago_ultimos4 = extraer4(this.metodo_pago);
+  }
+}
+
+/** Extrae los últimos 4 dígitos de un texto (ej. 'Bancolombia 582-000467-98' -> '6798'). */
+export function extraer4(texto: string | null | undefined): string | null {
+  if (!texto) return null;
+  const digitos = texto.replace(/\D/g, '');
+  if (digitos.length < 4) return null;
+  return digitos.slice(-4);
 }

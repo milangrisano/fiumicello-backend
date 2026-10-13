@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
-import { Factura } from '../entities/factura.entity';
+import { Factura, extraer4 } from '../entities/factura.entity';
 import { ComprobantePago } from '../entities/comprobante.entity';
 import { partesFechaBogota } from '../common/date-utils';
 
@@ -370,6 +370,9 @@ export class ResumenesService {
       monto: num(c.total_con_impuestos),
       conciliado: c.id_factura != null,
       id_factura: c.id_factura,
+      metodo_pago: c.metodo_pago,
+      metodo_pago_ultimos4:
+        c.metodo_pago_ultimos4 ?? extraer4(c.metodo_pago),
       // El tipo manual (si existe) tiene prioridad sobre la regla automática.
       tipo:
         c.tipo_manual ??
@@ -412,6 +415,9 @@ export class ResumenesService {
           this.comprobanteVinculado(comprobantes, f),
         id_comprobante: f.id_comprobante,
         referencia_comprobante: f.referencia_comprobante,
+        metodo_pago: f.metodo_pago,
+        metodo_pago_ultimos4:
+          f.metodo_pago_ultimos4 ?? extraer4(f.metodo_pago),
       })),
       // Comprobantes del período (clasificados: transferencias / proveedores).
       comprobantes_transferencias: {
