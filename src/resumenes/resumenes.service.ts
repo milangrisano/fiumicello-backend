@@ -338,6 +338,45 @@ export class ResumenesService {
 
     const num = (v: any) => Number(v ?? 0);
 
+    // Clasificación de comprobantes: cuentas personales del restaurante =
+    // "transferencia a otras cuentas"; el resto = "pago a proveedores".
+    const esCuentaPersonal = (s: string | null | undefined): boolean => {
+      if (!s) return false;
+      const t = s.toLowerCase();
+      return (
+        t.includes('la vera trattoria') ||
+        t.includes('enrique angrisano') ||
+        t.includes('nequi enrique') ||
+        t.includes('3123524512')
+      );
+    };
+
+    const comprobantesDetalle = comprobantes.map((c) => ({
+      id: c.id,
+      fecha: c.fecha,
+      referencia: c.referencia,
+      beneficiario: c.beneficiario_emisor,
+      monto: num(c.total_con_impuestos),
+      conciliado: c.id_factura != null,
+      id_factura: c.id_factura,
+      tipo: esCuentaPersonal(c.beneficiario_emisor)
+        ? 'transferencia'
+        : 'proveedor',
+    }));
+
+    const montoTransferencias = comprobantesDetalle
+      .filter((c) => c.tipo === 'transferencia')
+      .reduce((s, c) => s + c.monto, 0);
+    const montoProveedores = comprobantesDetalle
+      .filter((c) => c.tipo === 'proveedor')
+      .reduce((s, c) => s + c.monto, 0);
+    const nTransferencias = comprobantesDetalle.filter(
+      (c) => c.tipo === 'transferencia',
+    ).length;
+    const nProveedores = comprobantesDetalle.filter(
+      (c) => c.tipo === 'proveedor',
+    ).length;
+
     return {
       periodo,
       etiqueta: r.etiqueta,
@@ -361,16 +400,16 @@ export class ResumenesService {
         id_comprobante: f.id_comprobante,
         referencia_comprobante: f.referencia_comprobante,
       })),
-      // Comprobantes del período (haber).
-      comprobantes_detalle: comprobantes.map((c) => ({
-        id: c.id,
-        fecha: c.fecha,
-        referencia: c.referencia,
-        beneficiario: c.beneficiario_emisor,
-        monto: num(c.total_con_impuestos),
-        conciliado: c.id_factura != null,
-        id_factura: c.id_factura,
-      })),
+      // Comprobantes del período (clasificados: transferencias / proveedores).
+      comprobantes_transferencias: {
+        monto: montoTransferencias,
+        count: nTransferencias,
+      },
+      comprobantes_proveedores: {
+        monto: montoProveedores,
+        count: nProveedores,
+      },
+      comprobantes_detalle: comprobantesDetalle,
     };
   }
 
