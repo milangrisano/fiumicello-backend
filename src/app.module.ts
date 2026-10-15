@@ -1,4 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Factura } from './entities/factura.entity';
 import { FacturaItem } from './entities/factura-item.entity';
@@ -34,7 +36,6 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
 import { RolesService } from './auth/roles.service';
-import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { PermisosGuard } from './auth/permisos.guard';
@@ -45,8 +46,15 @@ import { PermisosGuard } from './auth/permisos.guard';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermisosGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
   imports: [
+    // Rate limiting global: 120 solicitudes por minuto por IP (default). Los
+    // endpoints sensibles (login/OTP/register/forgot) usan límites más estrictos
+    // vía @Throttle en AuthController.
+    ThrottlerModule.forRoot([
+      { ttl: 60000, limit: 120 },
+    ]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',

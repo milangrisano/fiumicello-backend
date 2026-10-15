@@ -16,6 +16,7 @@ import { Request, Response } from 'express';
 import { AuthService, REFRESH_COOKIE_NAME } from './auth.service';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { RolesPermisosService } from './roles-permisos.service';
 import { CurrentUser, JwtUser } from './current-user.decorator';
 
@@ -50,6 +51,8 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.OK)
+  // Anti spam de códigos: máximo 5 solicitudes de registro por minuto.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async register(@Body() body: { email?: string }) {
     return this.auth.requestRegister(body.email || '');
   }
@@ -58,6 +61,8 @@ export class AuthController {
   @Public()
   @Post('verify')
   @HttpCode(HttpStatus.OK)
+  // Anti fuerza bruta de código/de contraseña: máximo 5 intentos por minuto.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async verify(
     @Body() body: { email?: string; code?: string; password?: string },
   ) {
@@ -69,6 +74,8 @@ export class AuthController {
   @Public()
   @Post('verify-code')
   @HttpCode(HttpStatus.OK)
+  // Anti fuerza bruta del código: máximo 10 intentos por minuto.
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async verifyCode(@Body() body: { email?: string; code?: string }) {
     await this.auth.validateCode(body.email || '', body.code || '');
     return { ok: true, message: 'Código válido.' };
@@ -78,6 +85,8 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  // Anti fuerza bruta de contraseña: máximo 8 intentos por minuto por IP.
+  @Throttle({ default: { limit: 8, ttl: 60000 } })
   async login(
     @Body() body: { email?: string; password?: string },
     @Res() res: Response,
@@ -115,6 +124,8 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  // Anti spam de correos de reset: máximo 3 por minuto.
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   async forgotPassword(@Body() body: { email?: string }) {
     return this.auth.requestReset(body.email || '');
   }
@@ -123,6 +134,8 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  // Anti fuerza bruta del token: máximo 5 intentos por minuto.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async resetPassword(
     @Body() body: { email?: string; token?: string; password?: string },
   ) {
