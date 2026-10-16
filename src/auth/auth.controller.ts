@@ -39,6 +39,16 @@ export class AuthController {
     private readonly permisos: RolesPermisosService,
   ) {}
 
+  // ---- Public app config: session/inactivity timeouts (read from env). ----
+  @Public()
+  @Get('config')
+  async config() {
+    return {
+      // Minutos de inactividad antes de desloguear la app.
+      inactividadMin: parseInt(process.env.SESSION_INACTIVITY_MINUTES || '30', 10) || 30,
+    };
+  }
+
   // ---- Permissions of the logged-in user (frontend menu/actions) ----
   @Get('mis-permisos')
   @Roles('superadmin', 'admin', 'encargado', 'cajero', 'cocinero', 'mesero', 'ayudante', 'editor')
