@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Controller,
   Post,
-  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -27,7 +26,7 @@ import { OcrService } from './ocr.service';
 const IMAGENES_DIR =
   process.env.IMAGENES_DIR || path.resolve(process.cwd(), 'archivos');
 
-/** Subcarpeta destino según el tipo que manda el frontend. */
+/** Subcarpeta destino según el tipo detectado por el OCR. */
 const SUB = {
   factura: 'facturas',
   comprobante_pago: 'comprobantes/de_pago',
@@ -48,19 +47,17 @@ export class OcrController {
   }
 
   /**
-   * Sube una imagen de factura/comprobante, la guarda en la subcarpeta según
-   * `tipo` (factura | comprobante_pago | comprobante_transferencia), y lee su
-   * texto con OCR. Devuelve la ruta web y el texto extraído para pre-rellenar
-   * el formulario.
+   * Sube una imagen de factura/comprobante, la guarda, y con el modelo de
+   * visión IA detecta el tipo de documento automáticamente y lee sus datos.
+   * La imagen se mueve a la subcarpeta según el tipo (sin que la interfaz
+   * tenga que preguntar). Devuelve el texto y los campos para pre-rellenar.
    */
   @Post('subir')
   @UseInterceptors(
     FileInterceptor('archivo', {
       storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const tipo = (_req.query?.tipo as string) || '';
-          cb(null, path.join(IMAGENES_DIR, subcarpeta(tipo)));
-        },
+        // Se guarda primero en la raíz; al detectar el tipo se mueve a su carpeta.
+        destination: (_req, _file, cb) => cb(null, IMAGENES_DIR),
         filename: (_req, file, cb) => {
           const safe = file.originalname.replace(/[^A-Za-z0-9._-]/g, '_');
           cb(null, `${Date.now()}_${safe}`);
@@ -69,20 +66,31 @@ export class OcrController {
       limits: { fileSize: 20 * 1024 * 1024 }, // máx 20 MB
     }),
   )
-  async subir(
-    @UploadedFile() file?: Express.Multer.File,
-    @Query('tipo') tipo?: string,
-  ) {
+  async subir(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo.');
-    const buffer = fs.readFileSync(file.path);
-    const { texto } = await this.ocr.extractText(buffer);
-    const carpeta = subcarpeta(tipo);
+    const rutaOriginal = file.path;
+    const buffer = fs.readFileSync(rutaOriginal);
+    const resultado = await this.ocr.extractText(buffer);
+
+    // Mover a la subcarpeta según el tipo detectado (si hay).
+    const carpeta = subcarpeta(resultado.tipo ?? undefined);
+    let rutaFinal = rutaOriginal;
+    if (carpeta) {
+      const destino = path.join(IMAGENES_DIR, carpeta, file.filename);
+      fs.renameSync(rutaOriginal, destino);
+      rutaFinal = destino;
+    }
+
     return {
       ok: true,
-      tipo: tipo || null,
+      tipo: resultado.tipo,
+      texto: resultado.texto,
+      beneficiario: resultado.beneficiario,
+      fecha: resultado.fecha,
+      total: resultado.total,
+      referencia: resultado.referencia,
       archivo: file.filename,
       archivo_url: `/archivos/${carpeta ? carpeta + '/' : ''}${file.filename}`,
-      texto,
     };
   }
 }

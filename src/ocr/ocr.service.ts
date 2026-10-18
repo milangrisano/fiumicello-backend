@@ -23,59 +23,111 @@ export class OcrService {
   }
 
   /**
-   * Extrae el texto de una imagen mediante visión IA. `imageBuffer` es la foto
-   * (JPEG/PNG). Devuelve el texto crudo y los campos clave detectados.
-   */
-  async extractText(imageBuffer: Buffer): Promise<{ texto: string }> {
-    if (!this.configurado) {
-      return { texto: '' };
-    }
-    try {
-      const b64 = imageBuffer.toString('base64');
-      const body = {
-        model: this.model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text:
-                  '¿Qué documento muestra esta imagen? Si es una factura, ' +
-                  'comprobante de pago o de transferencia, extrae TODOS los ' +
-                  'datos legibles: tipo de documento, emisor/proveedor o ' +
-                  'beneficiario, número o referencia, fecha, monto total, ' +
-                  'método de pago, y cualquier otro dato relevante. ' +
-                  'Responde en español, texto plano.',
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${b64}`,
-                },
-              },
-            ],
-          },
-        ],
+     * Lee una imagen mediante visión IA y devuelve el tipo detectado + datos.
+     * El modelo devuelve JSON con: tipo, texto, beneficiario/proveedor, fecha,
+     * total, referencia. La interfaz usa eso para pre-rellenar el formulario.
+     */
+    async extractText(
+      imageBuffer: Buffer,
+    ): Promise<{
+      tipo: string | null;
+      texto: string;
+      beneficiario: string;
+      fecha: string;
+      total: string;
+      referencia: string;
+    }> {
+      const vacio = {
+        tipo: null,
+        texto: '',
+        beneficiario: '',
+        fecha: '',
+        total: '',
+        referencia: '',
       };
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`OpenRouter HTTP ${res.status}: ${err.slice(0, 200)}`);
+      if (!this.configurado) return vacio;
+
+      try {
+        const b64 = imageBuffer.toString('base64');
+        const body = {
+          model: this.model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    'Analiza esta imagen (factura o comprobante bancario). ' +
+                    'Responde SOLO con JSON válido, sin texto extra, con esta forma:\n' +
+                    '{\n' +
+                    '  "tipo": "factura" | "comprobante_pago" | "comprobante_transferencia",\n' +
+                    '  "beneficiario": "emisor o beneficiario",\n' +
+                    '  "fecha": "YYYY-MM-DD",\n' +
+                    '  "total": "12345.67" (solo el número),\n' +
+                    '  "referencia": "número o referencia",\n' +
+                    '  "texto": "texto legible del documento"\n' +
+                    '}\n' +
+                    'Clasifica: si es una factura de compra (vendedor, proveedor) ' +
+                    '-> "factura"; si es un comprobante/recibo de pago a un proveedor ' +
+                    '-> "comprobante_pago"; si es una consignación o transferencia ' +
+                    'entre cuentas (banco, Nequi, cuenta propia) -> "comprobante_transferencia". ' +
+                    'Si no hay texto legible, devuelve texto vacío y tipo null.',
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:image/jpeg;base64,${b64}`,
+                  },
+                },
+              ],
+            },
+          ],
+        };
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`OpenRouter HTTP ${res.status}: ${err.slice(0, 200)}`);
+        }
+        const data = (await res.json()) as any;
+        const content = (data?.choices?.[0]?.message?.content as string) || '';
+
+        // Extraer el objeto JSON del contenido (a veces viene envuelto en ```json).
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        const raw = jsonMatch ? jsonMatch[0] : '';
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = {};
+        }
+
+        const tipo = (
+          [
+            'factura',
+            'comprobante_pago',
+            'comprobante_transferencia',
+          ] as const
+        ).includes(parsed.tipo as any)
+          ? (parsed.tipo as string)
+          : null;
+        return {
+          tipo,
+          texto: String(parsed.texto ?? '').trim(),
+          beneficiario: String(parsed.beneficiario ?? '').trim(),
+          fecha: String(parsed.fecha ?? '').trim(),
+          total: String(parsed.total ?? '').trim(),
+          referencia: String(parsed.referencia ?? '').trim(),
+        };
+      } catch (e) {
+        throw e;
       }
-      const data = await res.json() as any;
-      const texto =
-        (data?.choices?.[0]?.message?.content as string) || '';
-      return { texto: texto.trim() };
-    } catch (e) {
-      throw e;
     }
-  }
 }
