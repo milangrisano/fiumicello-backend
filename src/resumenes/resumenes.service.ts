@@ -373,6 +373,9 @@ export class ResumenesService {
       metodo_pago: c.metodo_pago,
       metodo_pago_ultimos4:
         c.metodo_pago_ultimos4 ?? extraer4(c.metodo_pago),
+      // Imagen del comprobante (si está guardada en /archivos).
+      archivo: c.archivo ?? null,
+      archivo_url: c.archivo ? `/archivos/${c.archivo}` : null,
       // El tipo manual (si existe) tiene prioridad sobre la regla automática.
       tipo:
         c.tipo_manual ??
@@ -418,6 +421,9 @@ export class ResumenesService {
         metodo_pago: f.metodo_pago,
         metodo_pago_ultimos4:
           f.metodo_pago_ultimos4 ?? extraer4(f.metodo_pago),
+        // Imagen de la factura (si está guardada en /archivos).
+        archivo: f.archivo ?? null,
+        archivo_url: f.archivo ? `/archivos/${f.archivo}` : null,
       })),
       // Comprobantes del período (clasificados: transferencias / proveedores).
       comprobantes_transferencias: {
