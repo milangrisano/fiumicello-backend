@@ -94,7 +94,10 @@ export class OcrController {
       const destino = path.join(IMAGENES_DIR, carpeta, file.filename);
       fs.renameSync(rutaOriginal, destino);
     }
-    const archivo_url = `/archivos/${carpeta ? carpeta + '/' : ''}${file.filename}`;
+    // Ruta completa relativa (con subcarpeta) para que la URL /archivos/<archivo>
+    // apunte al lugar real donde se guardó el archivo.
+    const archivoGuardado = carpeta ? `${carpeta}/${file.filename}` : file.filename;
+    const archivo_url = `/archivos/${archivoGuardado}`;
 
     // Crear el registro automáticamente con los datos leídos.
     let creado: any = null;
@@ -107,7 +110,7 @@ export class OcrController {
           fecha: resultado.fecha || undefined,
           numero_factura: resultado.referencia || undefined,
           total_con_impuestos: parseFloat(resultado.total) || undefined,
-          archivo: file.filename,
+          archivo: archivoGuardado,
         });
         mensaje = 'Factura creada';
       } else if (
@@ -119,7 +122,7 @@ export class OcrController {
           fecha: resultado.fecha || undefined,
           referencia: resultado.referencia || undefined,
           total_con_impuestos: parseFloat(resultado.total) || undefined,
-          archivo: file.filename,
+          archivo: archivoGuardado,
         });
         mensaje = 'Comprobante creado';
       } else {
