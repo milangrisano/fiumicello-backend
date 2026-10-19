@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Logger,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -10,13 +11,12 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { OcrService } from './ocr.service';
+import { FacturasService } from '../facturas/facturas.service';
+import { ComprobantesService } from '../comprobantes/comprobantes.service';
 
 /**
  * Raíz de imágenes servida por nginx como `/archivos/...`. Configurable por
- * env (IMAGENES_DIR). Se replica igual en Lenovo (producción): el backend de
- * Lenovo escribe directamente en la carpeta local montada como volumen (sin
- * SMB). SMB solo lo usa herb para guardar facturas/comprobantes recibidos por
- * ese medio.
+ * env (IMAGENES_DIR). Se replica igual en Lenovo (producción).
  *
  * Estructura (mapea a la de Lenovo):
  *   <IMAGENES_DIR>/facturas/
@@ -39,7 +39,13 @@ function subcarpeta(tipo?: string): string {
 
 @Controller('ocr')
 export class OcrController {
-  constructor(private readonly ocr: OcrService) {
+  private readonly logger = new Logger('Ocr');
+
+  constructor(
+    private readonly ocr: OcrService,
+    private readonly facturas: FacturasService,
+    private readonly comprobantes: ComprobantesService,
+  ) {
     fs.mkdirSync(IMAGENES_DIR, { recursive: true });
     for (const s of Object.values(SUB)) {
       fs.mkdirSync(path.join(IMAGENES_DIR, s), { recursive: true });
@@ -47,16 +53,15 @@ export class OcrController {
   }
 
   /**
-   * Sube una imagen de factura/comprobante, la guarda, y con el modelo de
-   * visión IA detecta el tipo de documento automáticamente y lee sus datos.
-   * La imagen se mueve a la subcarpeta según el tipo (sin que la interfaz
-   * tenga que preguntar). Devuelve el texto y los campos para pre-rellenar.
+   * Toma una foto de factura/comprobante, la guarda, y con visión IA detecta
+   * el tipo y los datos. Luego CREA automáticamente el registro (factura o
+   * comprobante) con esos datos, sin que la interfaz tenga que preguntar nada.
+   * Devuelve el registro creado (o si ya existía, para avisarlo).
    */
   @Post('subir')
   @UseInterceptors(
     FileInterceptor('archivo', {
       storage: diskStorage({
-        // Se guarda primero en la raíz; al detectar el tipo se mueve a su carpeta.
         destination: (_req, _file, cb) => cb(null, IMAGENES_DIR),
         filename: (_req, file, cb) => {
           const safe = file.originalname.replace(/[^A-Za-z0-9._-]/g, '_');
@@ -70,27 +75,81 @@ export class OcrController {
     if (!file) throw new BadRequestException('No se recibió ningún archivo.');
     const rutaOriginal = file.path;
     const buffer = fs.readFileSync(rutaOriginal);
-    const resultado = await this.ocr.extractText(buffer);
 
-    // Mover a la subcarpeta según el tipo detectado (si hay).
+    let resultado: Awaited<ReturnType<OcrService['extractText']>>;
+    try {
+      resultado = await this.ocr.extractText(buffer);
+    } catch (e) {
+      fs.rmSync(rutaOriginal, { force: true });
+      this.logger.error('OCR error', e as any);
+      return {
+        ok: false,
+        error: 'No se pudo leer la imagen (visión IA). Trata de nuevo.',
+      };
+    }
+
+    // Mover la imagen a su subcarpeta según el tipo detectado.
     const carpeta = subcarpeta(resultado.tipo ?? undefined);
-    let rutaFinal = rutaOriginal;
     if (carpeta) {
       const destino = path.join(IMAGENES_DIR, carpeta, file.filename);
       fs.renameSync(rutaOriginal, destino);
-      rutaFinal = destino;
+    }
+    const archivo_url = `/archivos/${carpeta ? carpeta + '/' : ''}${file.filename}`;
+
+    // Crear el registro automáticamente con los datos leídos.
+    let creado: any = null;
+    let yaExistia = false;
+    let mensaje = '';
+    try {
+      if (resultado.tipo === 'factura') {
+        creado = await this.facturas.create({
+          proveedor: resultado.beneficiario || undefined,
+          fecha: resultado.fecha || undefined,
+          numero_factura: resultado.referencia || undefined,
+          total_con_impuestos: parseFloat(resultado.total) || undefined,
+          archivo: file.filename,
+        });
+        mensaje = 'Factura creada';
+      } else if (
+        resultado.tipo === 'comprobante_pago' ||
+        resultado.tipo === 'comprobante_transferencia'
+      ) {
+        creado = await this.comprobantes.create({
+          beneficiario_emisor: resultado.beneficiario || undefined,
+          fecha: resultado.fecha || undefined,
+          referencia: resultado.referencia || undefined,
+          total_con_impuestos: parseFloat(resultado.total) || undefined,
+          archivo: file.filename,
+        });
+        mensaje = 'Comprobante creado';
+      } else {
+        mensaje = 'Documento guardado, pero no se pudo determinar el tipo';
+      }
+    } catch (e: any) {
+      // Duplicado (o validación): no romper el flujo.
+      yaExistia = true;
+      mensaje =
+        (e?.response?.message as string) ||
+        e?.message ||
+        'No se pudo crear';
+      const id = e?.response?.message?.match(/id (\d+)/i)?.[1];
+      creado = id ? { id: Number(id) } : null;
     }
 
     return {
       ok: true,
       tipo: resultado.tipo,
-      texto: resultado.texto,
+      creado: !yaExistia && creado != null,
+      ya_existia: yaExistia,
+      mensaje,
+      id: (creado as any)?.id ?? null,
+      archivo: file.filename,
+      archivo_url,
       beneficiario: resultado.beneficiario,
       fecha: resultado.fecha,
       total: resultado.total,
       referencia: resultado.referencia,
-      archivo: file.filename,
-      archivo_url: `/archivos/${carpeta ? carpeta + '/' : ''}${file.filename}`,
+      texto: resultado.texto,
     };
   }
 }
