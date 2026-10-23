@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { EscaneoService } from './escaneo.service';
+import { OcrService } from '../ocr/ocr.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 
@@ -38,6 +39,7 @@ export class EscaneoController {
 
   constructor(
     private readonly escaneo: EscaneoService,
+    private readonly ocr: OcrService,
     private readonly facturas: FacturasService,
     private readonly comprobantes: ComprobantesService,
   ) {
@@ -82,8 +84,9 @@ export class EscaneoController {
       return {
         ok: true,
         id,
-        // la imagen temporal se sirve por nginx en /escaneo_tmp/<id>.jpg
-        preview_url: `/escaneo_tmp/${id}.jpg`,
+        // la imagen procesada se devuelve en base64 para mostrar al instante
+        // (la carpeta temporal no está expuesta por nginx)
+        preview_b64: `data:image/jpeg;base64,${resultado.data.toString('base64')}`,
         width: resultado.width,
         height: resultado.height,
       };
@@ -104,7 +107,7 @@ export class EscaneoController {
     @Body()
     body: {
       id: string;
-      tipo: 'factura' | 'comprobante_pago' | 'comprobante_transferencia';
+      tipo?: 'factura' | 'comprobante_pago' | 'comprobante_transferencia';
       fecha?: string;
       referencia?: string;
       proveedor?: string;
@@ -114,25 +117,45 @@ export class EscaneoController {
     if (!body?.id) throw new BadRequestException('Falta el id de previsualización.');
     const tmpFinal = path.join(TMP_DIR, `${body.id}.jpg`);
     if (!fs.existsSync(tmpFinal)) throw new NotFoundException('La previsualización venció. Escanea de nuevo.');
-    if (!body.tipo) throw new BadRequestException('Falta el tipo de documento.');
+
+    // Si no viene tipo/datos, pedirlos a la IA sobre la imagen ya escaneada.
+    let tipo = body.tipo;
+    let fecha = body.fecha || '';
+    let proveedor = body.proveedor || '';
+    let referencia = body.referencia || '';
+    let total = body.total;
+    if (!tipo) {
+      const buffer = fs.readFileSync(tmpFinal);
+      try {
+        const leido = await this.ocr.extractText(buffer);
+        tipo = (leido.tipo as any) ?? undefined;
+        fecha = leido.fecha || fecha;
+        proveedor = leido.beneficiario || proveedor;
+        referencia = leido.referencia || referencia;
+        const t = parseFloat(leido.total as any);
+        if (!Number.isNaN(t)) total = t;
+      } catch (e) {
+        this.logger.warn(`No se pudo leer el documento con IA: ${(e as any)?.message}`);
+      }
+    }
+    if (!tipo) throw new BadRequestException('No se pudo determinar el tipo de documento. Escanea de nuevo o revisa la foto.');
 
     // Construir el nombre estructurado: AAAAMMDD_REF_PROVEEDOR.jpg
-    let fecha = body.fecha || '';
-    let aaammdd = fecha.replace(/[^0-9]/g, '');
+    let aaammdd = String(fecha || '').replace(/[^0-9]/g, '');
     if (aaammdd.length !== 8 && aaammdd.length >= 4) aaammdd = `${aaammdd}0000`.slice(0, 8);
     if (aaammdd.length < 8) aaammdd = '00000000';
-    const prov = (body.proveedor || '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ._-]/g, '');
-    const ref = (body.referencia || '').trim().replace(/[^A-Za-z0-9._-]/g, '');
+    const prov = String(proveedor || '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ._-]/g, '');
+    const ref = String(referencia || '').trim().replace(/[^A-Za-z0-9._-]/g, '');
     const nombre = `${aaammdd}_${ref || 'SREF'}_${prov || 'SPROV'}.jpg`;
 
     // Destino: facturas/AAAA/MM/  |  comprobantes/<tipo>/
     let rutaRel: string;
     const aa = aaammdd.slice(0, 4);
     const mm = aaammdd.slice(4, 6);
-    if (body.tipo === 'factura') {
+    if (tipo === 'factura') {
       rutaRel = path.join('facturas', aa, mm, nombre);
     } else {
-      const sub = body.tipo === 'comprobante_pago' ? 'de_pago' : 'de_transferencia';
+      const sub = tipo === 'comprobante_pago' ? 'de_pago' : 'de_transferencia';
       rutaRel = path.join('comprobantes', sub, nombre);
     }
     const destinoFinal = path.join(IMAGENES_DIR, rutaRel);
@@ -144,20 +167,20 @@ export class EscaneoController {
     let creado: any = null;
     const archivo = rutaRel.replace(/\\/g, '/');
     try {
-      if (body.tipo === 'factura') {
+      if (tipo === 'factura') {
         creado = await this.facturas.create({
-          proveedor: body.proveedor || undefined,
-          fecha: body.fecha || undefined,
-          numero_factura: body.referencia || undefined,
-          total_con_impuestos: body.total ?? undefined,
+          proveedor: proveedor || undefined,
+          fecha: fecha || undefined,
+          numero_factura: referencia || undefined,
+          total_con_impuestos: total ?? undefined,
           archivo,
         });
       } else {
         creado = await this.comprobantes.create({
-          beneficiario_emisor: body.proveedor || undefined,
-          fecha: body.fecha || undefined,
-          referencia: body.referencia || undefined,
-          total_con_impuestos: body.total ?? undefined,
+          beneficiario_emisor: proveedor || undefined,
+          fecha: fecha || undefined,
+          referencia: referencia || undefined,
+          total_con_impuestos: total ?? undefined,
           archivo,
         });
       }
@@ -168,6 +191,7 @@ export class EscaneoController {
 
     return {
       ok: true,
+      tipo,
       archivo,
       archivo_url: `/archivos/${archivo}`,
       id: (creado as any)?.id ?? null,
