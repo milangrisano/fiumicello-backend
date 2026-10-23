@@ -35,6 +35,7 @@ import { CorrelativoService } from './common/correlativo.service';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { OcrModule } from './ocr/ocr.module';
+import { EscaneoModule } from './escaneo/escaneo.module';
 import { AuthService } from './auth/auth.service';
 import { RolesService } from './auth/roles.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -84,6 +85,7 @@ import { PermisosGuard } from './auth/permisos.guard';
     AuthModule,
     CorrelativoModule,
     OcrModule,
+    EscaneoModule,
   ],
 })
 export class AppModule implements OnModuleInit {
