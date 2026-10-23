@@ -42,31 +42,19 @@ export class EscaneoService {
     return this.key.trim().length > 20;
   }
 
-  /** Normaliza las coordenadas que devuelve la IA a rango 0-1 (autodetecta escala). */
-  private normalizarEsquinas(pts: number[]): number[] | null {
-    const maxx = Math.max(pts[0], pts[2], pts[4], pts[6]);
-    const maxy = Math.max(pts[1], pts[3], pts[5], pts[7]);
-    const maxA = Math.max(maxx, maxy);
-    if (maxA <= 1.5) return pts;            // ya en 0-1
-    if (maxA <= 1000) {                     // escala 0-1000 (permil)
-      for (let i = 0; i < 8; i++) pts[i] = pts[i] / 1000;
-      return pts;
-    }
-    for (let i = 0; i < 8; i++) pts[i] = pts[i] / maxA; // escala arbitraria
-    return pts;
-  }
-
   /**
-   * Pide a la IA las 4 esquinas del documento (coordenadas normalizadas 0-1,
-   * orden TL,TR,BR,BL). Devuelve null si no es capaz.
+   * Pide a la IA las 4 esquinas del documento en PÍXELES de la imagen reducida
+   * (exactamente las dimensiones que se le pasan), orden TL,TR,BR,BL.
+   * Devuelve null si no es capaz.
    */
   async detectarEsquinasIA(buffer: Buffer): Promise<number[] | null> {
     if (!this.configurado) return null;
     try {
       const mini = (await sharp(buffer)
-        .resize({ width: Math.min(1100, 1000) })
+        .resize({ width: 1000 })
         .jpeg({ quality: 85 })
         .toBuffer({ resolveWithObject: true }));
+      const mw = mini.info.width, mh = mini.info.height;
       const b64 = mini.data.toString('base64');
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -83,14 +71,14 @@ export class EscaneoService {
                 {
                   type: 'text',
                   text:
-                    'En la imagen hay un documento rectangular (factura/comprobante/' +
-                    'papel) sobre un fondo. Detecta sus 4 esquinas y responde SOLO con ' +
-                    'JSON válido, sin texto extra, con esta forma exacta:\n' +
+                    `La imagen mide EXACTAMENTE ${mw}px de ancho por ${mh}px de alto. ` +
+                    'Hay un documento rectangular (factura/comprobante/papel) sobre un fondo. ' +
+                    'Halla SUS 4 ESQUINAS EXACTAS (donde empieza y termina el papel, no el texto). ' +
+                    `Responde SOLO con JSON válido, sin texto extra:\n` +
                     '{"esquinas": [[tlx,tly],[trx,try],[brx,bry],[blx,bly]]}\n' +
-                    'donde cada punto está en COORDENADAS NORMALIZADAS entre 0 y 1 ' +
-                    '(x/width, y/height de la imagen). Las esquinas en orden: ' +
-                    'sup-izq (tl), sup-der (tr), inf-der (br), inf-izq (bl). ' +
-                    'Si no ves un documento claro, responde {"esquinas": null}.',
+                    'donde cada valor es EN PÍXELES dentro del rango de la imagen ' +
+                    `(0 a ${mw} para x, 0 a ${mh} para y). Orden: sup-izq, sup-der, inf-der, inf-izq. ` +
+                    'Si no ves un documento claro o las esquinas son inciertas, responde {"esquinas": null}.',
                 },
                 {
                   type: 'image_url',
@@ -117,7 +105,13 @@ export class EscaneoService {
         if (Number.isNaN(x) || Number.isNaN(y)) return null;
         pts.push(x, y);
       }
-      return pts; // normalizadas 0-1
+      // Devuelve píxeles en la escala MINI junto con el factor de escala
+      // multiplicado por las dimensiones originales.
+      const orig = await sharp(buffer).metadata();
+      const sx = orig.width / mw, sy = orig.height / mh;
+      const px: number[] = [];
+      for (let i = 0; i < 8; i++) px.push(i % 2 === 0 ? pts[i] * sx : pts[i] * sy);
+      return px; // píxeles de la imagen ORIGINAL
     } catch (e) {
       this.logger.error(`detectarEsquinasIA error: ${(e as any)?.message}`);
       return null;
@@ -240,12 +234,9 @@ export class EscaneoService {
   /**
    * Procesa la imagen de escaneo y devuelve el documento enderezado/recortado.
    * - Si vienen `esquinas` (manuales/de la app): warp directo en píxeles.
-   * - Si no: recorte del mayor blob claro + realce (seguro, no corta texto).
-   *
-   * NOTA: el enderezado por IA (detectarEsquinasIA) está disponible pero NO se
-   * auto-invoca aquí: en la única foto real probada las esquinas de la IA
-   * recortaban texto del documento. Se activará cuando se calibre con una foto
-   * en ángulo (o se use el warp manual del Nivel 2 con esquinas del usuario).
+   * - Si no: pide las esquinas a la IA (en píxeles exactos de la original) y
+   *   aplica la transformación de perspectiva (enderezado del ángulo).
+   * - Si la IA no da esquinas o el warp falla: recorte por preferencia segura.
    */
   async procesar(buffer: Buffer, esquinas?: number[]): Promise<EscaneoResult> {
     // 1) Esquinas explícitas (Nivel 2 / manual): warp directo en píxeles
@@ -254,7 +245,14 @@ export class EscaneoService {
       catch (e) { this.logger.warn(`warp manual falló, uso bbox: ${(e as any)?.message}`); }
     }
 
-    // 2) Recorte del mayor blob claro + realce (seguro, no corta texto)
+    // 2) Esquinas por IA (enderezado real) en píxeles de la imagen original
+    const ia = await this.detectarEsquinasIA(buffer);
+    if (ia && ia.length === 8) {
+      try { return await this.warp(buffer, ia); }
+      catch (e) { this.logger.warn(`warp IA falló, uso bbox: ${(e as any)?.message}`); }
+    }
+
+    // 3) Recorte del mayor blob claro + realce (seguro, no corta texto)
     const { minX, minY, maxX, maxY } = await this.detectarBbox(buffer);
     const w = maxX - minX + 1, h = maxY - minY + 1;
     const exOut = (await sharp(buffer)
