@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import sharp from 'sharp';
+import * as sharp from 'sharp';
 
 /**
  * Servicio de ESCANEO de documentos (facturas/comprobantes).
@@ -91,22 +91,20 @@ export class EscaneoService {
     try {
       const { minX, minY, maxX, maxY, width, height } = await this.detectarBbox(buffer);
 
-      // 1) Recortar el documento
-      const rec = await sharp(buffer)
-        .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
-        .toBuffer({ resolveWithObject: true });
-
-      // 2) Realce: subir contraste, saturación leve, nitidez
-      const out = await sharp(rec.data, { raw: rec.info })
-        .resize({ width: Math.min(1500, rec.info.width) })
+      // Recorte + realce en UN solo encadenado (no reinterpretar raw):
+      //    extract con el bbox detectado, contraste, nitidez, jpeg.
+      const w = maxX - minX + 1;
+      const h = maxY - minY + 1;
+      const exOut = (await sharp(buffer)
+        .extract({ left: minX, top: minY, width: w, height: h })
         .linear(1.6, -40)           // reforzar contraste
         .sharpen({ sigma: 1.4, m1: 1, m2: 2, x1: 25, y2: 6, y3: 4 })
+        .resize({ width: Math.min(1500, w) })
         .jpeg({ quality: 92 })
-        .toBuffer();
-
+        .toBuffer({ resolveWithObject: true }));
       // Nota: enderezado por perspectiva (esquinas) se aplica antes del recorte
       // cuando esté integrado; por ahora el recorte+realce da el "scan limpio".
-      return { data: out, width: 1000, height: 1200 };
+      return { data: exOut.data, width: exOut.info.width, height: exOut.info.height };
     } catch (e) {
       this.logger.error('Escaneo error', e as any);
       throw e;
