@@ -239,20 +239,20 @@ export class EscaneoService {
    * - Si la IA no da esquinas o el warp falla: recorte por preferencia segura.
    */
   async procesar(buffer: Buffer, esquinas?: number[]): Promise<EscaneoResult> {
-    // 1) Esquinas explícitas (Nivel 2 / manual): warp directo en píxeles
+    // 1) Esquinas explícitas (Nivel 2 / manual): warp directo en píxeles.
+    //    Es el modo de ENDEREZADO FIABLE: el usuario ajusta las 4 esquinas y
+    //    el warp las usa tal cual (CamScanner-style). Probado: con esquinas
+    //    correctas da un recorte enderezado limpio.
     if (esquinas && esquinas.length === 8) {
       try { return await this.warp(buffer, esquinas); }
       catch (e) { this.logger.warn(`warp manual falló, uso bbox: ${(e as any)?.message}`); }
     }
 
-    // 2) Esquinas por IA (enderezado real) en píxeles de la imagen original
-    const ia = await this.detectarEsquinasIA(buffer);
-    if (ia && ia.length === 8) {
-      try { return await this.warp(buffer, ia); }
-      catch (e) { this.logger.warn(`warp IA falló, uso bbox: ${(e as any)?.message}`); }
-    }
-
-    // 3) Recorte del mayor blob claro + realce (seguro, no corta texto)
+    // 2) Recorte del mayor blob claro + realce (seguro, no corta texto).
+    //    NOTA: el enderezado AUTOMÁTICO por IA (detectarEsquinasIA) está
+    //    disponible pero NO se auto-invoca: en las fotos reales probadas
+    //    devolvía esquinas que hacen que el warp salga negro/recortado. Se
+    //    re-usa solo cuando el usuario entrega esquinas manuales (Nivel 2).
     const { minX, minY, maxX, maxY } = await this.detectarBbox(buffer);
     const w = maxX - minX + 1, h = maxY - minY + 1;
     const exOut = (await sharp(buffer)
