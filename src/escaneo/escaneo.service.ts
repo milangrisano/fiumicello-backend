@@ -1,5 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as sharp from 'sharp';
+// sharp 0.35+ tiene exports duales (ESM/CJS); `import = require` resuelve al
+// .d.mts y no es llamable bajo `module: commonjs`. Declaramos el tipo mínimo
+// y usamos `require` directo (CommonJS runtime como exige el tsconfig).
+type SharpInstance = {
+  grayscale(): SharpInstance;
+  threshold(v: number): SharpInstance;
+  raw(): { toBuffer(o?: { resolveWithObject?: boolean }): Promise<{ data: Buffer; info: { width: number; height: number; channels: number } }> };
+  extract(o: { left: number; top: number; width: number; height: number }): SharpInstance;
+  linear(a: number, b: number): SharpInstance;
+  sharpen(o?: Record<string, unknown>): SharpInstance;
+  resize(o: { width: number }): SharpInstance;
+  jpeg(o?: Record<string, unknown>): SharpInstance;
+  toBuffer(o?: { resolveWithObject?: boolean }): Promise<{ data: Buffer; info: { width: number; height: number; channels: number } }>;
+};
+const sharp = require('sharp') as (input?: Buffer, rawOpts?: Record<string, unknown>) => SharpInstance;
 
 /**
  * Servicio de ESCANEO de documentos (facturas/comprobantes).
