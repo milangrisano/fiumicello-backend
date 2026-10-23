@@ -138,51 +138,52 @@ export class EscaneoService {
 
     // downsampling 4x para velocidad; píxel "claro" si el papel blanco se
     // distingue de la madera clara con tinte: aeromático (baja saturación) y
-    // brillo alto.
+    // brillo alto. Luego bbox por PROYECCIÓN (densidad de filas/columnas), que
+    // es más robusto que un único blob conexo (este cortaba el papel en fotos
+    // donde la madera clara se une al borde del documento).
     const sw = Math.floor(width / 4), sh = Math.floor(height / 4);
-    const bin = new Uint8Array(sw * sh);
+    // máscara aeromática
+    const mask = new Uint8Array(sw * sh);
     for (let cy = 0; cy < sh; cy++) {
       for (let cx = 0; cx < sw; cx++) {
         const o = (cy * 4 * width + cx * 4) % (d.length - 2);
         const r = d[o], g = d[o + 1], b = d[o + 2];
         const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
         const lum = (r + g + b) / 3;
-        bin[cy * sw + cx] = (mx - mn) < 35 && lum > 145 ? 1 : 0;
+        mask[cy * sw + cx] = (mx - mn) < 35 && lum > 145 ? 1 : 0;
       }
     }
-
-    // mayor componente conexo
-    const visited = new Uint8Array(sw * sh);
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    let bestSize = 0;
-    let bestBox: { m1: number; m2: number; m3: number; m4: number } | null = null;
-    for (let y0 = 0; y0 < sh; y0++) {
-      for (let x0 = 0; x0 < sw; x0++) {
-        if (bin[y0 * sw + x0] === 1 && !visited[y0 * sw + x0]) {
-          const st = [[x0, y0]]; visited[y0 * sw + x0] = 1;
-          let size = 0; let m1 = 1e9, m2 = -1, m3 = 1e9, m4 = -1;
-          while (st.length) {
-            const cell = st.pop()!; const [x, y] = cell; size++;
-            if (x < m1) m1 = x; if (x > m2) m2 = x;
-            if (y < m3) m3 = y; if (y > m4) m4 = y;
-            for (const [dx, dy] of dirs) {
-              const nx = x + dx, ny = y + dy;
-              if (nx >= 0 && ny >= 0 && nx < sw && ny < sh && bin[ny * sw + nx] === 1 && !visited[ny * sw + nx]) {
-                visited[ny * sw + nx] = 1; st.push([nx, ny]);
-              }
-            }
-          }
-          if (size > bestSize) { bestSize = size; bestBox = { m1, m2, m3, m4 }; }
-        }
-      }
+    // proyección por filas: cuenta de píxeles aeromáticos por fila (coarse)
+    const filas = new Array<number>(sh).fill(0);
+    for (let cy = 0; cy < sh; cy++) {
+      let cnt = 0;
+      for (let cx = 0; cx < sw; cx++) cnt += mask[cy * sw + cx];
+      filas[cy] = cnt;
     }
-    if (!bestBox) return { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1, width, height };
+    // rango vertical con densidad significativa (>= 30% del ancho coarse)
+    const umbral = Math.floor(sw * 0.3);
+    let minY = -1, maxY = -1;
+    for (let cy = 0; cy < sh; cy++) {
+      if (filas[cy] >= umbral) { if (minY < 0) minY = cy; maxY = cy; }
+    }
+    if (minY < 0) return { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1, width, height };
+    // proyección horizontal dentro del rango vertical detectado
+    const cols = new Array<number>(sw).fill(0);
+    for (let cy = minY; cy <= maxY; cy++) {
+      for (let cx = 0; cx < sw; cx++) cols[cx] += mask[cy * sw + cx];
+    }
+    const v2 = Math.floor((maxY - minY + 1) * 0.5);
+    let minX = -1, maxX = -1;
+    for (let cx = 0; cx < sw; cx++) {
+      if (cols[cx] >= v2) { if (minX < 0) minX = cx; maxX = cx; }
+    }
+    if (minX < 0) return { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1, width, height };
     const M = 6;
-    const minX = Math.max(0, bestBox.m1 * 4 - M);
-    const minY = Math.max(0, bestBox.m3 * 4 - M);
-    const maxX = Math.min(width - 1, bestBox.m2 * 4 + 1 + M);
-    const maxY = Math.min(height - 1, bestBox.m4 * 4 + 1 + M);
-    return { minX, minY, maxX, maxY, width, height };
+    const rMinX = Math.max(0, minX * 4 - M);
+    const rMinY = Math.max(0, minY * 4 - M);
+    const rMaxX = Math.min(width - 1, maxX * 4 + 4 + M);
+    const rMaxY = Math.min(height - 1, maxY * 4 + 4 + M);
+    return { minX: rMinX, minY: rMinY, maxX: rMaxX, maxY: rMaxY, width, height };
   }
 
   /**
