@@ -69,14 +69,28 @@ export class EscaneoController {
     const rutaOriginal = file.path;
     try {
       const buffer = fs.readFileSync(rutaOriginal);
-      const esquinas = Array.isArray(body?.esquinas) && body!.esquinas!.length === 8
-        ? body!.esquinas
-        : undefined;
+      // esquinas llega como array (JSON) o como string CSV (multipart) "x1,y1,..."
+      let esquinas: number[] | undefined = undefined;
+      const raw = body?.esquinas;
+      if (Array.isArray(raw)) {
+        if (raw.length === 8) esquinas = raw.map(Number);
+      } else if (typeof raw === 'string') {
+        const parts = raw.split(',').map((s) => Number(s.trim()));
+        if (parts.length === 8 && parts.every((n) => !Number.isNaN(n))) esquinas = parts;
+      }
       const resultado = await this.escaneo.procesar(buffer, esquinas);
 
       const id = crypto.randomBytes(8).toString('hex');
       const tmpFinal = path.join(TMP_DIR, `${id}.jpg`);
       fs.writeFileSync(tmpFinal, resultado.data);
+
+      // dimensiones de la imagen ORIGINAL (para que el frontend convierta las
+      // posiciones de los handles de esquinas a píxeles reales al re-subir)
+      let origW = 0, origH = 0;
+      try {
+        const meta = await this.escaneo.metadata(buffer);
+        origW = meta.width; origH = meta.height;
+      } catch { /* ignora */ }
 
       // limpia la subida original (ya procesada)
       fs.rmSync(rutaOriginal, { force: true });
@@ -89,6 +103,8 @@ export class EscaneoController {
         preview_b64: `data:image/jpeg;base64,${resultado.data.toString('base64')}`,
         width: resultado.width,
         height: resultado.height,
+        img_orig_w: origW,
+        img_orig_h: origH,
       };
     } catch (e) {
       fs.rmSync(rutaOriginal, { force: true });

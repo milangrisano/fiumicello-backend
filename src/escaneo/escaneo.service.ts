@@ -42,6 +42,11 @@ export class EscaneoService {
     return this.key.trim().length > 20;
   }
 
+  /** Dimensiones de una imagen (para pasar las esquinas manuales al resize). */
+  async metadata(buffer: Buffer): Promise<{ width: number; height: number }> {
+    return await sharp(buffer).metadata();
+  }
+
   /**
    * Pide a la IA las 4 esquinas del documento en PÍXELES de la imagen reducida
    * (exactamente las dimensiones que se le pasan), orden TL,TR,BR,BL.
