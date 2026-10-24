@@ -63,7 +63,7 @@ export class EscaneoController {
   )
   async previsualizar(
     @UploadedFile() file?: Express.Multer.File,
-    @Body() body?: { esquinas?: number[] },
+    @Body() body?: { esquinas?: number[] | string },
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo.');
     const rutaOriginal = file.path;
