@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { Factura, extraer4 } from '../entities/factura.entity';
@@ -22,6 +24,20 @@ export class ResumenesService {
     @InjectRepository(ComprobantePago)
     private readonly comprobantes: Repository<ComprobantePago>,
   ) {}
+
+  /** Raíz de archivos servidos (mismo env que OCR/escaneo). */
+  private static readonly IMAGENES_DIR =
+    process.env.IMAGENES_DIR || path.resolve(process.cwd(), 'archivos');
+
+  /** True si el archivo existe físicamente en el volumen servido. */
+  private existeArchivo(archivo?: string | null): boolean {
+    if (!archivo) return false;
+    try {
+      return fs.existsSync(path.join(ResumenesService.IMAGENES_DIR, archivo));
+    } catch {
+      return false;
+    }
+  }
 
   /** Convierte fecha ISO/date a inicio-fin + etiqueta para el período. */
   rango(
@@ -373,9 +389,11 @@ export class ResumenesService {
       metodo_pago: c.metodo_pago,
       metodo_pago_ultimos4:
         c.metodo_pago_ultimos4 ?? extraer4(c.metodo_pago),
-      // Imagen del comprobante (si está guardada en /archivos).
-      archivo: c.archivo ?? null,
-      archivo_url: c.archivo ? `/archivos/${c.archivo}` : null,
+      // Imagen del comprobante SOLO si el archivo existe en el volumen servido
+      // (evita el 404 y el botón "Ver documento" aparece solo si es visible).
+      archivo: c.archivo && this.existeArchivo(c.archivo) ? c.archivo : null,
+      archivo_url:
+        c.archivo && this.existeArchivo(c.archivo) ? `/archivos/${c.archivo}` : null,
       // El tipo manual (si existe) tiene prioridad sobre la regla automática.
       tipo:
         c.tipo_manual ??
@@ -421,9 +439,10 @@ export class ResumenesService {
         metodo_pago: f.metodo_pago,
         metodo_pago_ultimos4:
           f.metodo_pago_ultimos4 ?? extraer4(f.metodo_pago),
-        // Imagen de la factura (si está guardada en /archivos).
-        archivo: f.archivo ?? null,
-        archivo_url: f.archivo ? `/archivos/${f.archivo}` : null,
+        // Imagen de la factura SOLO si el archivo existe en el volumen servido.
+        archivo: f.archivo && this.existeArchivo(f.archivo) ? f.archivo : null,
+        archivo_url:
+          f.archivo && this.existeArchivo(f.archivo) ? `/archivos/${f.archivo}` : null,
       })),
       // Comprobantes del período (clasificados: transferencias / proveedores).
       comprobantes_transferencias: {
