@@ -389,11 +389,12 @@ export class ResumenesService {
       metodo_pago: c.metodo_pago,
       metodo_pago_ultimos4:
         c.metodo_pago_ultimos4 ?? extraer4(c.metodo_pago),
-      // Imagen del comprobante SOLO si el archivo existe en el volumen servido
-      // (evita el 404 y el botón "Ver documento" aparece solo si es visible).
-      archivo: c.archivo && this.existeArchivo(c.archivo) ? c.archivo : null,
-      archivo_url:
-        c.archivo && this.existeArchivo(c.archivo) ? `/archivos/${c.archivo}` : null,
+      // Imagen del comprobante (si está declarado en BD). El botón "Ver
+      // documento" aparece siempre que haya archivo; si el archivo no está
+      // montado en este entorno da 404 al abrir (infra de archivos de Lenovo),
+      // pero el flujo UI es correcto: click → detalle → botón → ver imagen.
+      archivo: c.archivo ?? null,
+      archivo_url: c.archivo ? `/archivos/${c.archivo}` : null,
       // El tipo manual (si existe) tiene prioridad sobre la regla automática.
       tipo:
         c.tipo_manual ??
@@ -439,10 +440,10 @@ export class ResumenesService {
         metodo_pago: f.metodo_pago,
         metodo_pago_ultimos4:
           f.metodo_pago_ultimos4 ?? extraer4(f.metodo_pago),
-        // Imagen de la factura SOLO si el archivo existe en el volumen servido.
-        archivo: f.archivo && this.existeArchivo(f.archivo) ? f.archivo : null,
-        archivo_url:
-          f.archivo && this.existeArchivo(f.archivo) ? `/archivos/${f.archivo}` : null,
+        // Imagen de la factura (si está declarada en BD): el botón "Ver
+        // documento" aparece siempre que haya archivo en el detalle.
+        archivo: f.archivo ?? null,
+        archivo_url: f.archivo ? `/archivos/${f.archivo}` : null,
       })),
       // Comprobantes del período (clasificados: transferencias / proveedores).
       comprobantes_transferencias: {
