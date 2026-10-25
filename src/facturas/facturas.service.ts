@@ -77,6 +77,42 @@ export class FacturasService {
   }
 
   /**
+   * Todos los ítems de TODAS las facturas de compra, agrupados por producto
+   * (descripción) sumando cantidad y total, con el proveedor y nº de factura.
+   * Ordenado por total gastado descendente.
+   */
+  async todosItems(): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const rows = await this.itemsRepo
+      .createQueryBuilder('i')
+      .select('i.descripcion', 'descripcion')
+      .addSelect('i.categoria', 'categoria')
+      .addSelect('i.proveedor', 'proveedor')
+      .addSelect('i.numero_factura', 'numero_factura')
+      .addSelect('i.fecha_factura', 'fecha_factura')
+      .addSelect('SUM(COALESCE(i.cantidad, 0))', 'cantidad')
+      .addSelect('SUM(COALESCE(i.total, 0))', 'total')
+      .where('i.descripcion IS NOT NULL AND i.descripcion <> \'\'')
+      .groupBy('i.descripcion')
+      .addGroupBy('i.categoria')
+      .addGroupBy('i.proveedor')
+      .addGroupBy('i.numero_factura')
+      .addGroupBy('i.fecha_factura')
+      .orderBy('SUM(COALESCE(i.total, 0))', 'DESC')
+      .getRawMany();
+    const items = rows.map((r) => ({
+      producto: r.descripcion,
+      categoria: r.categoria,
+      proveedor: r.proveedor,
+      numero_factura: r.numero_factura,
+      fecha: r.fecha_factura,
+      cantidad: Number(r.cantidad ?? 0),
+      total: Number(r.total ?? 0),
+    }));
+    const total = items.reduce((s, it) => s + (it.total || 0), 0);
+    return { items, total };
+  }
+
+  /**
    * Duplicate rule: same numero_factura + proveedor + fecha already exists.
    * Supports the physical + email intake paths converging on the same invoice.
    */

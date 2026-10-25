@@ -24,6 +24,11 @@ export class FacturasController {
     return this.facturas.findAll(q);
   }
 
+  @Get('items')
+  todosItems() {
+    return this.facturas.todosItems();
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.facturas.findOne(id);
