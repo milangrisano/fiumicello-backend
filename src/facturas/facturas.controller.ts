@@ -25,8 +25,8 @@ export class FacturasController {
   }
 
   @Get('items')
-  todosItems() {
-    return this.facturas.todosItems();
+  todosItems(@Query() q: { desde?: string; hasta?: string }) {
+    return this.facturas.todosItems(q.desde, q.hasta);
   }
 
   @Get(':id')

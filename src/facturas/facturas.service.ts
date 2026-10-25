@@ -79,10 +79,11 @@ export class FacturasService {
   /**
    * Todos los ítems de TODAS las facturas de compra, agrupados por producto
    * (descripción) sumando cantidad y total, con el proveedor y nº de factura.
+   * Filtrable por rango de fecha de factura (desde/hasta, formato YYYY-MM-DD).
    * Ordenado por total gastado descendente.
    */
-  async todosItems(): Promise<{ items: Record<string, unknown>[]; total: number }> {
-    const rows = await this.itemsRepo
+  async todosItems(desde?: string, hasta?: string): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const qb = this.itemsRepo
       .createQueryBuilder('i')
       .select('i.descripcion', 'descripcion')
       .addSelect('i.categoria', 'categoria')
@@ -91,7 +92,14 @@ export class FacturasService {
       .addSelect('i.fecha_factura', 'fecha_factura')
       .addSelect('SUM(COALESCE(i.cantidad, 0))', 'cantidad')
       .addSelect('SUM(COALESCE(i.total, 0))', 'total')
-      .where('i.descripcion IS NOT NULL AND i.descripcion <> \'\'')
+      .where('i.descripcion IS NOT NULL AND i.descripcion <> \'\'');
+    if (desde) {
+      qb.andWhere('i.fecha_factura >= :desde', { desde });
+    }
+    if (hasta) {
+      qb.andWhere('i.fecha_factura <= :hasta', { hasta });
+    }
+    const rows = await qb
       .groupBy('i.descripcion')
       .addGroupBy('i.categoria')
       .addGroupBy('i.proveedor')
