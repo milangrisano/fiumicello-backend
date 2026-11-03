@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { EscaneoService } from './escaneo.service';
 import { OcrService } from '../ocr/ocr.service';
+import { SidecarService } from '../ocr/sidecar.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 
@@ -40,6 +41,7 @@ export class EscaneoController {
   constructor(
     private readonly escaneo: EscaneoService,
     private readonly ocr: OcrService,
+    private readonly sidecar: SidecarService,
     private readonly facturas: FacturasService,
     private readonly comprobantes: ComprobantesService,
   ) {
@@ -204,6 +206,31 @@ export class EscaneoController {
       this.logger.warn(`Al guardar el registro falló (quizá duplicado): ${(e?.response?.message || e?.message)}`);
       // El archivo ya está en destino; la duplicidad se reporta sin romper.
     }
+
+    // Escribir el sidecar JSON junto a la imagen (convención X.jpg ↔ X.json).
+    // Aunque el registro ya existiera, se regenera para mantener la carpeta
+    // consistente con lo escaneado.
+    const datosSidecar: Record<string, unknown> = { tipo };
+    if (fecha) datosSidecar.fecha = fecha;
+    if (referencia) {
+      tipo === 'factura'
+        ? (datosSidecar.numero_factura = referencia)
+        : (datosSidecar.referencia = referencia);
+    }
+    if (proveedor) {
+      tipo === 'factura'
+        ? (datosSidecar.proveedor = proveedor)
+        : (datosSidecar.beneficiario_emisor = proveedor);
+    }
+    if (total != null && !Number.isNaN(total)) {
+      datosSidecar.total_con_impuestos = total;
+      datosSidecar.moneda = 'COP';
+    }
+    this.sidecar.write(
+      IMAGENES_DIR,
+      archivo,
+      { archivo, datos: datosSidecar, usage: null },
+    );
 
     return {
       ok: true,

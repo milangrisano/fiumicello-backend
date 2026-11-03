@@ -11,6 +11,7 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { OcrService } from './ocr.service';
+import { SidecarService } from './sidecar.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 
@@ -43,6 +44,7 @@ export class OcrController {
 
   constructor(
     private readonly ocr: OcrService,
+    private readonly sidecar: SidecarService,
     private readonly facturas: FacturasService,
     private readonly comprobantes: ComprobantesService,
   ) {
@@ -137,6 +139,36 @@ export class OcrController {
         'No se pudo crear';
       const id = e?.response?.message?.match(/id (\d+)/i)?.[1];
       creado = id ? { id: Number(id) } : null;
+    }
+
+    // Escribir el sidecar JSON junto a la imagen (convención X.jpg ↔ X.json).
+    // Aunque el registro ya existiera (duplicado), el sidecar se regenera con
+    // los datos leídos para mantener la carpeta de imágenes siempre consistente.
+    if (carpeta && resultado.tipo) {
+      const datosSidecar: Record<string, unknown> = {
+        tipo: resultado.tipo,
+      };
+      if (resultado.fecha) datosSidecar.fecha = resultado.fecha;
+      if (resultado.referencia) {
+        resultado.tipo === 'factura'
+          ? (datosSidecar.numero_factura = resultado.referencia)
+          : (datosSidecar.referencia = resultado.referencia);
+      }
+      if (resultado.beneficiario) {
+        resultado.tipo === 'factura'
+          ? (datosSidecar.proveedor = resultado.beneficiario)
+          : (datosSidecar.beneficiario_emisor = resultado.beneficiario);
+      }
+      if (resultado.total) {
+        datosSidecar.total_con_impuestos = parseFloat(resultado.total) || undefined;
+        datosSidecar.moneda = 'COP';
+      }
+      const sidecarPath = this.sidecar.write(
+        IMAGENES_DIR,
+        archivoGuardado,
+        { archivo: archivoGuardado, datos: datosSidecar, usage: null },
+      );
+      this.logger.log(`Sidecar escrito: ${sidecarPath}`);
     }
 
     return {
