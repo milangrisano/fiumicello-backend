@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -78,10 +77,25 @@ export class PedidosController {
     return this.pedidos.entregar(id);
   }
 
-  @Delete(':id')
+  /** Solicitud de anulación (cajero): guarda el motivo y notifica a aprobadores. */
+  @Post(':id/solicitar-anulacion')
   @RequirePermiso(PERMISSIONS.ventas_crear)
-  @HttpCode(HttpStatus.OK)
-  cancelar(@Param('id', ParseIntPipe) id: number) {
-    return this.pedidos.cancelar(id);
+  solicitarAnulacion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { motivo?: string | null },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.pedidos.solicitarAnulacion(id, body?.motivo || '', user?.id || 0);
+  }
+
+  /** Aprobación de anulación (superadmin/admin/encargado): valida la contraseña del aprobador. */
+  @Post(':id/anular')
+  @RequirePermiso(PERMISSIONS.pedidos_anular)
+  anular(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { password?: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.pedidos.anular(id, body?.password || '', { id: user?.id || 0, rol: user?.rol || '' });
   }
 }

@@ -12,9 +12,20 @@ export class Pedido {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // abierta | facturada | pagada_pendiente | entregada
+  // abierta | facturada | pagada_pendiente | entregada | anulada
   @Column({ type: 'text', nullable: false, default: 'abierta' })
   estado: string;
+
+  // Anulación lógica (motivo exigido; no se borra el pedido físico).
+  @Column({ type: 'text', nullable: true })
+  motivo_anulacion: string | null;
+
+  // Rol o usuario que autorizó la anulación (superadmin/admin/encargado).
+  @Column({ type: 'integer', nullable: true })
+  anulado_por: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  anulado_en: string | null;
 
   // Estado de cocina de la comanda completa:
   //   recibida -> preparando -> lista -> retirada

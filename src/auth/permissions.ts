@@ -20,6 +20,9 @@ export const PERMISSIONS = {
   ventas_editar: 'ventas:editar',
   ventas_eliminar: 'ventas:eliminar',
 
+  // Pedidos / mesas
+  pedidos_anular: 'pedidos:anular', // anular mesa/pedido (admin/encargado aprueban)
+
   // Cocina
   cocina_ver: 'cocina:ver',
   cocina_actualizar: 'cocina:actualizar',
@@ -73,6 +76,7 @@ export const PERMISSION_DEFS: PermissionDef[] = [
   { key: PERMISSIONS.ventas_editar, label: 'Editar ventas', modulo: 'Ventas / POS' },
   { key: PERMISSIONS.ventas_eliminar, label: 'Eliminar ventas', modulo: 'Ventas / POS' },
   // Cocina
+  { key: PERMISSIONS.pedidos_anular, label: 'Anular mesas / pedidos (aprobación)', modulo: 'Pos / Mesas' },
   { key: PERMISSIONS.cocina_ver, label: 'Ver órdenes de cocina', modulo: 'Cocina' },
   { key: PERMISSIONS.cocina_actualizar, label: 'Actualizar estado cocina', modulo: 'Cocina' },
   // Caja

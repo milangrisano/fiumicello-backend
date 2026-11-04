@@ -5,6 +5,7 @@ import { PedidoItem } from '../entities/pedido-item.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
+import { Usuario } from '../entities/usuario.entity';
 import { PedidosService } from './pedidos.service';
 import { PedidosController } from './pedidos.controller';
 import { TurnosCajaModule } from '../turnos-caja/turnos-caja.module';
@@ -12,7 +13,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { CorrelativoModule } from '../common/correlativo.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem]), TurnosCajaModule, RealtimeModule, CorrelativoModule],
+  imports: [TypeOrmModule.forFeature([Pedido, PedidoItem, FormaPago, Venta, VentaItem, Usuario]), TurnosCajaModule, RealtimeModule, CorrelativoModule],
   controllers: [PedidosController],
   providers: [PedidosService],
   exports: [PedidosService],

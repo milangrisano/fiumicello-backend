@@ -69,4 +69,13 @@ export class RealtimeGateway
   emitTurnoCerrado(data: Record<string, unknown>) {
     this.server.emit('turno:cerrado', data);
   }
+
+  // Aprobación de anulación de mesa/pedido: cajero pide -> aprobadores reciben.
+  emitSolicitudAnulacion(data: Record<string, unknown>) {
+    this.server.emit('pedido:anulacion-solicitada', data);
+  }
+
+  emitPedidoAnulado(data: Record<string, unknown>) {
+    this.server.emit('pedido:anulada', data);
+  }
 }

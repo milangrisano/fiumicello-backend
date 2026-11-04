@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -12,6 +13,8 @@ import { ItemCarta } from '../entities/item-carta.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
+import { Usuario } from '../entities/usuario.entity';
+import * as bcrypt from 'bcrypt';
 import { TurnosCajaService } from '../turnos-caja/turnos-caja.service';
 import { nowLocalISO } from '../common/date-utils';
 import { CorrelativoService } from '../common/correlativo.service';
@@ -46,6 +49,8 @@ export class PedidosService {
     private readonly ventas: Repository<Venta>,
     @InjectRepository(VentaItem)
     private readonly ventaItems: Repository<VentaItem>,
+    @InjectRepository(Usuario)
+    private readonly usuarios: Repository<Usuario>,
     private readonly dataSource: DataSource,
     private readonly turnosCaja: TurnosCajaService,
     private readonly realtime: RealtimeGateway,
@@ -282,6 +287,69 @@ export class PedidosService {
     await this.pedidoItems.delete({ id_pedido: id });
     await this.pedidos.delete(id);
     return { ok: true };
+  }
+
+  /**
+   * El cajero SOLICITA anular una mesa/pedido abierto: guarda el motivo en el
+   * pedido y emite un evento en tiempo real para que superadmin/admin/encargado
+   * (con permiso pedidos:anular) aprueben con su contraseña. No anula aún.
+   */
+  async solicitarAnulacion(id: number, motivo: string, solicitanteId: number) {
+    const p = await this.pedidos.findOneBy({ id });
+    if (!p) throw new NotFoundException('Pedido no encontrado.');
+    if (p.estado !== 'abierta') {
+      throw new BadRequestException('Solo se puede anular un pedido abierto.');
+    }
+    p.motivo_anulacion = (motivo || '').trim() || null;
+    await this.pedidos.save(p);
+    this.realtime.emitSolicitudAnulacion({
+      id: p.id,
+      escenario: p.escenario,
+      numero_mesa: p.numero_mesa,
+      cliente_nombre: p.cliente_nombre,
+      total: Number(p.total),
+      motivo: p.motivo_anulacion,
+      solicitado_por: solicitanteId,
+    });
+    return { ok: true, mensaje: 'Solicitud de anulación enviada para aprobación.' };
+  }
+
+  /**
+   * El aprobador (superadmin/admin/encargado) aprueba la anulación con su
+   * contraseña. Se valida contra su password_hash y que su rol tenga permiso
+   * pedidos:anular; luego el pedido pasa a 'anulada' (lógica, no se borra).
+   */
+  async anular(id: number, password: string, aprobador: { id: number; rol: string }) {
+    const p = await this.pedidos.findOneBy({ id });
+    if (!p) throw new NotFoundException('Pedido no encontrado.');
+    if (p.estado !== 'abierta') {
+      throw new BadRequestException('Solo se puede anular un pedido abierto.');
+    }
+    // El que aprueba debe ser superadmin/admin/encargado (misma lógica que la
+    // autorización de ingresos). Se valida por ROL explícito para no depender
+    // de un catálogo de permisos desactualizado en la BD.
+    if (!['superadmin', 'admin', 'encargado'].includes(aprobador.rol)) {
+      throw new ForbiddenException('Solo superadmin, admin o encargado pueden aprobar una anulación.');
+    }
+    // Validar la contraseña del aprobador.
+    const autor = await this.usuarios.findOneBy({ id: aprobador.id });
+    if (!autor || !autor.password_hash) {
+      throw new UnauthorizedException('Credenciales del aprobador inválidas.');
+    }
+    const ok = await bcrypt.compare(password || '', autor.password_hash);
+    if (!ok) throw new UnauthorizedException('Contraseña del aprobador incorrecta.');
+    // Anulación lógica: conserva el pedido e ítems, solo cambia de estado.
+    p.estado = 'anulada';
+    p.anulado_por = aprobador.id;
+    p.anulado_en = new Date().toISOString();
+    await this.pedidos.save(p);
+    this.realtime.emitPedidoAnulado({
+      id: p.id,
+      escenario: p.escenario,
+      numero_mesa: p.numero_mesa,
+      necesidad: 'refresh-vivos',
+    });
+    return this.obtener(id);
   }
 
   /** Cola de cocina: comandas con su estado_cocina e ITEMS, ordenadas por llegada. */
