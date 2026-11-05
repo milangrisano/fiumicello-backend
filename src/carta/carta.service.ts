@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CategoriaCarta } from '../entities/categoria-carta.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
+import { CartaItemTamano } from '../entities/carta-item-tamano.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 
 /** Shape returned to clients: categories with their items, ordered. */
@@ -18,6 +19,9 @@ export interface CartaResponse {
       precio_personal: number | null;
       precio_mediana: number | null;
       precio_grande: number | null;
+      // Tamaños dinámicos (Personal, Mediana, 1/2 Mediana, ...). Si el item no
+      // tiene filas en carta_item_tamanios, se derivan de las 3 columnas fijas.
+      tamanios: Array<{ nombre: string; precio: number }>;
     }>;
   }>;
 }
@@ -29,6 +33,8 @@ export class CartaService {
     private readonly categorias: Repository<CategoriaCarta>,
     @InjectRepository(ItemCarta)
     private readonly items: Repository<ItemCarta>,
+    @InjectRepository(CartaItemTamano)
+    private readonly tamaniosRepo: Repository<CartaItemTamano>,
     @InjectRepository(VentaItem)
     private readonly ventaItems: Repository<VentaItem>,
   ) {}
@@ -43,10 +49,38 @@ export class CartaService {
     return this._buildCarta(false);
   }
 
+  /** Tamaños efectivos de un item: las filas dinámicas si existen; si no, las
+   *  3 columnas fijas de legado (Personal/Mediana/Grande). Si nada, [].
+   *  Se pasa la lista ya cargada de tamaños (todos los items) para no repetir
+   *  queries por item. */
+  private efectivosDin(existentes: Map<number, CartaItemTamano[]>, i: ItemCarta) {
+    const rows = existentes.get(i.id) ?? [];
+    if (rows.length > 0) {
+      return rows
+        .slice()
+        .sort((a, b) => a.orden - b.orden)
+        .map((t) => ({ nombre: t.nombre, precio: Number(t.precio) }));
+    }
+    const out: Array<{ nombre: string; precio: number }> = [];
+    if (i.precio_personal != null) out.push({ nombre: 'Personal', precio: Number(i.precio_personal) });
+    if (i.precio_mediana != null) out.push({ nombre: 'Mediana', precio: Number(i.precio_mediana) });
+    if (i.precio_grande != null) out.push({ nombre: 'Grande', precio: Number(i.precio_grande) });
+    return out;
+  }
+
   private async _buildCarta(soloActivos: boolean): Promise<CartaResponse> {
     const cats = await this.categorias.find({ order: { orden: 'ASC', id: 'ASC' } });
     const itms = (await this.items.find({ order: { orden: 'ASC', id: 'ASC' } }))
       .filter((i) => !soloActivos || i.activo);
+
+    // Carga de una vez todos los tamaños dinámicos, indexados por id_item.
+    const todosTamanios = await this.tamaniosRepo.find();
+    const porItem = new Map<number, CartaItemTamano[]>();
+    for (const t of todosTamanios) {
+      const arr = porItem.get(t.id_item) ?? [];
+      arr.push(t);
+      porItem.set(t.id_item, arr);
+    }
 
     return {
       categorias: cats.map((c) => ({
@@ -64,6 +98,7 @@ export class CartaService {
             precio_grande: num(i.precio_grande),
             costo: num(i.costo),
             activo: i.activo,
+            tamanios: this.efectivosDin(porItem, i),
           })),
       })),
     };
@@ -94,17 +129,52 @@ export class CartaService {
     return { ok: true };
   }
 
-  async crearItem(data: Partial<ItemCarta>) {
-    return this.items.save(
-      this.items.create({ ...data, created_at: new Date().toISOString() }),
+  async crearItem(data: Partial<ItemCarta> & { tamanios?: Array<{ nombre: string; precio: number }> }) {
+    const { tamanios, ...resto } = data;
+    const it = await this.items.save(
+      this.items.create({ ...resto, created_at: new Date().toISOString() }),
     );
+    if (tamanios && tamanios.length > 0) {
+      await this._reemplazarTamanios(it.id, tamanios);
+    }
+    return it;
   }
 
-  async actualizarItem(id: number, data: Partial<ItemCarta>) {
+  async actualizarItem(
+    id: number,
+    data: Partial<ItemCarta> & { tamanios?: Array<{ nombre: string; precio: number }> },
+  ) {
     const it = await this.items.findOneBy({ id });
     if (!it) throw new NotFoundException('Item no encontrado.');
-    Object.assign(it, data);
-    return this.items.save(it);
+    const { tamanios, ...resto } = data;
+    delete (resto as any).id;
+    Object.assign(it, resto);
+    const guardado = await this.items.save(it);
+    if (tamanios) {
+      await this._reemplazarTamanios(id, tamanios);
+    }
+    return guardado;
+  }
+
+  /** Reescribe los tamaños dinámicos de un item (borra filas y crea las nuevas). */
+  private async _reemplazarTamanios(
+    idItem: number,
+    tamanios: Array<{ nombre: string; precio: number }>,
+  ) {
+    await this.tamaniosRepo.delete({ id_item: idItem });
+    const now = new Date().toISOString();
+    const limpias = (tamanios || [])
+      .map((t, i) => ({
+        id_item: idItem,
+        nombre: (t.nombre || '').trim(),
+        precio: Number(t.precio) || 0,
+        orden: i,
+        created_at: now,
+      }))
+      .filter((t) => t.nombre.length > 0 && t.precio > 0);
+    if (limpias.length > 0) {
+      await this.tamaniosRepo.save(this.tamaniosRepo.create(limpias));
+    }
   }
 
   async eliminarItem(id: number) {

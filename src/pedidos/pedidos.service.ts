@@ -10,6 +10,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Pedido } from '../entities/pedido.entity';
 import { PedidoItem } from '../entities/pedido-item.entity';
 import { ItemCarta } from '../entities/item-carta.entity';
+import { CartaItemTamano } from '../entities/carta-item-tamano.entity';
 import { FormaPago } from '../entities/forma-pago.entity';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
@@ -49,6 +50,8 @@ export class PedidosService {
     private readonly ventas: Repository<Venta>,
     @InjectRepository(VentaItem)
     private readonly ventaItems: Repository<VentaItem>,
+    @InjectRepository(CartaItemTamano)
+    private readonly tamaniosRepo: Repository<CartaItemTamano>,
     @InjectRepository(Usuario)
     private readonly usuarios: Repository<Usuario>,
     private readonly dataSource: DataSource,
@@ -57,11 +60,21 @@ export class PedidosService {
     private readonly correlativo: CorrelativoService,
     ) {}
 
-  private precio(prod: ItemCarta, tamanio?: string | null): number {
-    const t = (tamanio || '').toLowerCase();
-    if (t === 'personal') return Number(prod.precio_personal ?? 0);
-    if (t === 'mediana') return Number(prod.precio_mediana ?? 0);
-    if (t === 'grande') return Number(prod.precio_grande ?? 0);
+  private async precio(prod: ItemCarta, tamanio?: string | null): Promise<number> {
+    const t = (tamanio || '').trim();
+    // Tamaños dinámicos (carta_item_tamanios): si existe una fila con ese
+    // nombre, se usa su precio. Así soporta 1/2 Mediana, 1/2 Grande, ...
+    if (t) {
+      const fila = await this.tamaniosRepo.findOne({
+        where: { id_item: prod.id, nombre: t },
+      });
+      if (fila) return Number(fila.precio);
+    }
+    // Fallback a las columnas fijas de legado por nombre.
+    const tl = t.toLowerCase();
+    if (tl === 'personal') return Number(prod.precio_personal ?? 0);
+    if (tl === 'mediana') return Number(prod.precio_mediana ?? 0);
+    if (tl === 'grande') return Number(prod.precio_grande ?? 0);
     return Number(prod.precio ?? 0);
   }
 
@@ -137,7 +150,7 @@ export class PedidosService {
         .findOneBy({ id: it.id_producto });
       if (!prod) throw new NotFoundException('Producto no encontrado.');
       const cantidad = it.cantidad && it.cantidad > 0 ? it.cantidad : 1;
-      const precio = this.precio(prod, it.tamanio);
+      const precio = await this.precio(prod, it.tamanio);
       // Costo: usa el valor explícito si lo envían, si no el del catálogo.
       const costo =
         it.costo_unitario != null && !isNaN(Number(it.costo_unitario))
