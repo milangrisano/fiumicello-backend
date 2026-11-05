@@ -9,6 +9,7 @@ import { Usuario } from './entities/usuario.entity';
 import { Rol } from './entities/rol.entity';
 import { CategoriaCarta } from './entities/categoria-carta.entity';
 import { ItemCarta } from './entities/item-carta.entity';
+import { CartaItemTamano } from './entities/carta-item-tamano.entity';
 import { Venta } from './entities/venta.entity';
 import { VentaItem } from './entities/venta-item.entity';
 import { FormaPago } from './entities/forma-pago.entity';
@@ -66,7 +67,7 @@ import { PermisosGuard } from './auth/permisos.guard';
       database: process.env.DB_NAME || 'fiumicello',
       entities: [
         Factura, FacturaItem, ComprobantePago, Usuario, Rol,
-        CategoriaCarta, ItemCarta, Venta, VentaItem, FormaPago,
+        CategoriaCarta, ItemCarta, CartaItemTamano, Venta, VentaItem, FormaPago,
         Pedido, PedidoItem, TurnoCaja, MovimientoCaja, PagoPropina,
         RefreshToken,
       ],
