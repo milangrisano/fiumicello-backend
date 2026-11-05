@@ -2,4 +2,4 @@
  *  (lib/core/app_version.dart) para poder verificar en runtime qué imagen está
  *  sirviendo (coincidencia frontend vs backend). NUNCA desacoplar los bumps.
  */
-export const APP_VERSION = '0.17.30';
+export const APP_VERSION = '0.17.31';
