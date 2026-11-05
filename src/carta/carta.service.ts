@@ -52,14 +52,23 @@ export class CartaService {
   /** Tamaños efectivos de un item: las filas dinámicas si existen; si no, las
    *  3 columnas fijas de legado (Personal/Mediana/Grande). Si nada, [].
    *  Se pasa la lista ya cargada de tamaños (todos los items) para no repetir
-   *  queries por item. */
+   *  queries por item.
+   *  DEDUPLICA por nombre (ignorando mayúsculas): la BD puede tener filas
+   *  duplicadas (guardado repetido desde la UI) y no deben salir repetidos. */
   private efectivosDin(existentes: Map<number, CartaItemTamano[]>, i: ItemCarta) {
     const rows = existentes.get(i.id) ?? [];
     if (rows.length > 0) {
-      return rows
+      const vistos = new Set<string>();
+      const unicos: Array<{ nombre: string; precio: number }> = [];
+      for (const t of rows
         .slice()
-        .sort((a, b) => a.orden - b.orden)
-        .map((t) => ({ nombre: t.nombre, precio: Number(t.precio) }));
+        .sort((a, b) => a.orden - b.orden)) {
+        const clave = (t.nombre || '').trim().toLowerCase();
+        if (clave.length === 0 || vistos.has(clave)) continue;
+        vistos.add(clave);
+        unicos.push({ nombre: t.nombre.trim(), precio: Number(t.precio) });
+      }
+      return unicos;
     }
     const out: Array<{ nombre: string; precio: number }> = [];
     if (i.precio_personal != null) out.push({ nombre: 'Personal', precio: Number(i.precio_personal) });
@@ -163,6 +172,9 @@ export class CartaService {
   ) {
     await this.tamaniosRepo.delete({ id_item: idItem });
     const now = new Date().toISOString();
+    // Deduplica por nombre (ignorando mayúsculas): evita que la UI guarde el
+    // mismo tamaño repetido (causaba tamaños duplicados en el diálogo).
+    const vistos = new Set<string>();
     const limpias = (tamanios || [])
       .map((t, i) => ({
         id_item: idItem,
@@ -171,7 +183,13 @@ export class CartaService {
         orden: i,
         created_at: now,
       }))
-      .filter((t) => t.nombre.length > 0 && t.precio > 0);
+      .filter((t) => t.nombre.length > 0 && t.precio > 0)
+      .filter((t) => {
+        const clave = t.nombre.toLowerCase();
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+      });
     if (limpias.length > 0) {
       await this.tamaniosRepo.save(this.tamaniosRepo.create(limpias));
     }
