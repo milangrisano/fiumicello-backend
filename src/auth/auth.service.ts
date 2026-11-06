@@ -234,6 +234,27 @@ export class AuthService {
     this.logger.log(`Contraseña restablecida para ${normalized}.`);
   }
 
+  // ---- change password (logged-in user) ----
+  async cambiarContrasena(userId: number, actual: string, nueva: string): Promise<void> {
+    const user = await this.usuarios.findOneBy({ id: userId });
+    if (!user || !user.password_hash) {
+      throw new UnauthorizedException('Usuario no encontrado.');
+    }
+    const okActual = await bcrypt.compare(actual, user.password_hash);
+    if (!okActual) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta.');
+    }
+    if (!nueva || nueva.length < 6) {
+      throw new BadRequestException('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+    if (nueva === actual) {
+      throw new BadRequestException('La nueva contraseña debe ser distinta a la actual.');
+    }
+    user.password_hash = await this.hashPassword(nueva);
+    await this.usuarios.save(user);
+    this.logger.log(`Contraseña cambiada para usuario id=${userId}.`);
+  }
+
   // ---- login ----
   async login(email: string, password: string) {
     const normalized = (email || '').trim().toLowerCase();

@@ -153,6 +153,23 @@ export class AuthController {
     return { ok: true, message: 'Contraseña restablecida.' };
   }
 
+  // ---- Change password (logged-in user) ----
+  @Post('cambiar-contrasena')
+  @HttpCode(HttpStatus.OK)
+  // Anti fuerza bruta de la contraseña actual: máximo 5 intentos por minuto.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async cambiarContrasena(
+    @Body() body: { passwordActual?: string; passwordNueva?: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    await this.auth.cambiarContrasena(
+      user.id,
+      body.passwordActual || '',
+      body.passwordNueva || '',
+    );
+    return { ok: true, message: 'Contraseña actualizada correctamente.' };
+  }
+
   // ---- Admin: list pending approvals ----
   @Get('usuarios/pendientes')
   @Roles('superadmin', 'admin')
