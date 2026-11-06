@@ -7,7 +7,7 @@ import { RefreshToken } from '../entities/refresh-token.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
-import { EmailService, EmailServiceSimulado } from './email.service';
+import { EmailService, EmailServiceSimulado, EmailServiceReal } from './email.service';
 import { RolesPermisosService } from './roles-permisos.service';
 import { RolesService } from './roles.service';
 import { RolesController } from './roles.controller';
@@ -26,8 +26,15 @@ import { RolesController } from './roles.controller';
     JwtStrategy,
     RolesPermisosService,
     RolesService,
-    // EmailService with the simulated implementation active for now.
-    { provide: EmailService, useClass: EmailServiceSimulado },
+    // EmailService: usa Resend (real) si hay RESEND_API_KEY; si no, simulado
+    // (loguea el código) para no romper el registro en entornos sin correo.
+    {
+      provide: EmailService,
+      useFactory: () =>
+        (process.env.RESEND_API_KEY || '').trim()
+          ? new EmailServiceReal()
+          : new EmailServiceSimulado(),
+    },
   ],
   exports: [AuthService, RolesPermisosService, RolesService],
 })
