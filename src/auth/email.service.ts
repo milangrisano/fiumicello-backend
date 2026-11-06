@@ -53,8 +53,8 @@ export class EmailServiceSimulado extends EmailService {
  * No extra npm dependency: uses the native `fetch` available in Node 18+.
  *
  * Env vars:
- *   RESEND_API_KEY  — API key de Resend (obligatoria para enviar).
- *   MAIL_FROM       — remitente verificado, p.ej. "Fiumicello <no-reply@fiumicello.site>".
+ *   RESEND_TOKEN   — API key de Resend (alias usado en el .env; obligatoria para enviar).
+ *   MAIL_FROM      — remitente verificado, p.ej. "Fiumicello <no-reply@fiumicello.site>".
  */
 export class EmailServiceReal extends EmailService {
   private readonly logger = new Logger('EmailServiceReal');
@@ -63,11 +63,12 @@ export class EmailServiceReal extends EmailService {
 
   constructor() {
     super();
-    this.apiKey = (process.env.RESEND_API_KEY || '').trim();
+    // En el .env se usa la variable RESEND_TOKEN (alias acordado con Enrique).
+    this.apiKey = (process.env.RESEND_TOKEN || '').trim();
     this.from = (process.env.MAIL_FROM || 'Fiumicello <no-reply@fiumicello.site>').trim();
     if (!this.apiKey) {
       this.logger.warn(
-        'RESEND_API_KEY no definida: los correos NO se enviarán (se registrará un aviso).',
+        'RESEND_TOKEN no está definida: los correos NO se enviarán (se registrará un aviso).',
       );
     }
   }

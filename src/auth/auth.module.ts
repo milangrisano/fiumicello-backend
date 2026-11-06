@@ -26,12 +26,12 @@ import { RolesController } from './roles.controller';
     JwtStrategy,
     RolesPermisosService,
     RolesService,
-    // EmailService: usa Resend (real) si hay RESEND_API_KEY; si no, simulado
+    // EmailService: usa Resend (real) si hay RESEND_TOKEN; si no, simulado
     // (loguea el código) para no romper el registro en entornos sin correo.
     {
       provide: EmailService,
       useFactory: () =>
-        (process.env.RESEND_API_KEY || '').trim()
+        (process.env.RESEND_TOKEN || '').trim()
           ? new EmailServiceReal()
           : new EmailServiceSimulado(),
     },
