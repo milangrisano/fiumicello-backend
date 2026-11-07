@@ -90,15 +90,36 @@ export class OcrController {
       };
     }
 
-    // Mover la imagen a su subcarpeta según el tipo detectado.
+    // Mover la imagen a su subcarpeta según el tipo detectado, con el nombre
+    // estructurado AAAAMMDD_REF_PROVEEDOR (igual que /api/escaneo/confirmar) para
+    // que el mapeo/barrido de producción sea consistente entre ambos flujos.
+    // REF = número de factura o nº de comprobante (depósito/transferencia).
     const carpeta = subcarpeta(resultado.tipo ?? undefined);
+    let relativo = file.filename;
     if (carpeta) {
-      const destino = path.join(IMAGENES_DIR, carpeta, file.filename);
+      let aaammdd = String(resultado.fecha || '').replace(/[^0-9]/g, '');
+      if (aaammdd.length !== 8 && aaammdd.length >= 4) aaammdd = `${aaammdd}0000`.slice(0, 8);
+      if (aaammdd.length < 8) aaammdd = '00000000';
+      const prov = String(resultado.beneficiario || '')
+        .trim().replace(/\s+/g, '-')
+        .replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ._-]/g, '');
+      const ref = String(resultado.referencia || '').trim().replace(/[^A-Za-z0-9._-]/g, '');
+      const ext = path.extname(file.originalname || file.filename) || '.jpg';
+      const nombre = `${aaammdd}_${ref || 'SREF'}_${prov || 'SPROV'}${ext}`;
+      if (resultado.tipo === 'factura') {
+        const aa = aaammdd.slice(0, 4);
+        const mm = aaammdd.slice(4, 6);
+        relativo = path.join('facturas', aa, mm, nombre);
+      } else {
+        relativo = path.join(carpeta, nombre);
+      }
+      const destino = path.join(IMAGENES_DIR, relativo);
+      fs.mkdirSync(path.dirname(destino), { recursive: true });
       fs.renameSync(rutaOriginal, destino);
     }
     // Ruta completa relativa (con subcarpeta) para que la URL /archivos/<archivo>
     // apunte al lugar real donde se guardó el archivo.
-    const archivoGuardado = carpeta ? `${carpeta}/${file.filename}` : file.filename;
+    const archivoGuardado = relativo.replace(/\\/g, '/');
     const archivo_url = `/archivos/${archivoGuardado}`;
 
     // Crear el registro automáticamente con los datos leídos.
