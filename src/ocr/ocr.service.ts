@@ -37,6 +37,14 @@ export class OcrService {
       fecha: string;
       total: string;
       referencia: string;
+      items?: Array<{
+        descripcion?: string;
+        cantidad?: number;
+        precio_unitario?: number;
+        base_imponible?: number;
+        iva?: number;
+        total?: number;
+      }>;
     }> {
       const vacio = {
         tipo: null,
@@ -74,8 +82,22 @@ export class OcrService {
                     '  "fecha": "YYYY-MM-DD",\n' +
                     '  "total": "12345.67" (solo el número),\n' +
                     '  "referencia": "número o referencia",\n' +
-                    '  "texto": "texto legible del documento"\n' +
+                    '  "texto": "texto legible del documento",\n' +
+                    '  "items": [\n' +
+                    '    {\n' +
+                    '      "descripcion": "descripción del producto/servicio",\n' +
+                    '      "cantidad": 2,\n' +
+                    '      "precio_unitario": 12000,\n' +
+                    '      "base_imponible": 24000,\n' +
+                    '      "iva": 4560,\n' +
+                    '      "total": 28560\n' +
+                    '    }\n' +
+                    '  ]\n' +
                     '}\n' +
+                    'Los ítems son las líneas del detalle de la factura (productos o ' +
+                    'servicios). Si la factura los lista, completa cada línea con su ' +
+                    'descripción, cantidad, precio unitario, base imponible, IVA y ' +
+                    'total por línea. Si no hay detalle legible, devuelve "items": [].\n' +
                     'Clasifica: si es una factura de compra (vendedor, proveedor) ' +
                     '-> "factura"; si es un comprobante/recibo de pago a un proveedor ' +
                     '-> "comprobante_pago"; si es una consignación o transferencia ' +
@@ -133,6 +155,20 @@ export class OcrService {
           fecha: String(parsed.fecha ?? '').trim(),
           total: String(parsed.total ?? '').trim(),
           referencia: String(parsed.referencia ?? '').trim(),
+          items: Array.isArray(parsed.items)
+            ? (parsed.items as Array<Record<string, unknown>>)
+                .map((it) => ({
+                  descripcion: String(it.descripcion ?? '').trim() || undefined,
+                  cantidad: typeof it.cantidad === 'number' ? it.cantidad : undefined,
+                  precio_unitario:
+                    typeof it.precio_unitario === 'number' ? it.precio_unitario : undefined,
+                  base_imponible:
+                    typeof it.base_imponible === 'number' ? it.base_imponible : undefined,
+                  iva: typeof it.iva === 'number' ? it.iva : undefined,
+                  total: typeof it.total === 'number' ? it.total : undefined,
+                }))
+                .filter((it) => it.descripcion)
+            : undefined,
         };
       } catch (e) {
         throw e;

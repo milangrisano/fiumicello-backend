@@ -142,6 +142,7 @@ export class EscaneoController {
     let proveedor = body.proveedor || '';
     let referencia = body.referencia || '';
     let total = body.total;
+    let itemsMap: Array<Record<string, unknown>> | undefined;
     if (!tipo) {
       const buffer = fs.readFileSync(tmpFinal);
       try {
@@ -152,6 +153,16 @@ export class EscaneoController {
         referencia = leido.referencia || referencia;
         const t = parseFloat(leido.total as any);
         if (!Number.isNaN(t)) total = t;
+        if (!itemsMap && leido.items?.length) {
+          itemsMap = leido.items.map((it) => ({
+            descripcion: it.descripcion,
+            cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
+            base_imponible: it.base_imponible,
+            iva: it.iva,
+            total: it.total,
+          }));
+        }
       } catch (e) {
         this.logger.warn(`No se pudo leer el documento con IA: ${(e as any)?.message}`);
       }
@@ -192,6 +203,7 @@ export class EscaneoController {
           numero_factura: referencia || undefined,
           total_con_impuestos: total ?? undefined,
           archivo,
+          items: itemsMap?.length ? itemsMap : undefined,
         });
       } else {
         creado = await this.comprobantes.create({

@@ -134,6 +134,16 @@ export class OcrController {
           numero_factura: resultado.referencia || undefined,
           total_con_impuestos: parseFloat(resultado.total) || undefined,
           archivo: archivoGuardado,
+          items: resultado.items?.length
+            ? resultado.items.map((it) => ({
+                descripcion: it.descripcion,
+                cantidad: it.cantidad,
+                precio_unitario: it.precio_unitario,
+                base_imponible: it.base_imponible,
+                iva: it.iva,
+                total: it.total,
+              }))
+            : undefined,
         });
         mensaje = 'Factura creada';
       } else if (
