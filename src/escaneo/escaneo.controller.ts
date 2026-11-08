@@ -145,7 +145,7 @@ export class EscaneoController {
     if (!tipo) {
       const buffer = fs.readFileSync(tmpFinal);
       try {
-        const leido = await this.ocr.extractText(buffer);
+        const leido = await this.ocr.extractText(buffer, 'image/jpeg');
         tipo = (leido.tipo as any) ?? undefined;
         fecha = leido.fecha || fecha;
         proveedor = leido.beneficiario || proveedor;

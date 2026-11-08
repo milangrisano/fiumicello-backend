@@ -29,6 +29,7 @@ export class OcrService {
      */
     async extractText(
       imageBuffer: Buffer,
+      mimeType?: string,
     ): Promise<{
       tipo: string | null;
       texto: string;
@@ -49,6 +50,13 @@ export class OcrService {
 
       try {
         const b64 = imageBuffer.toString('base64');
+        // Usar el MIME recibido (p.ej. application/pdf para PDFs, image/jpeg
+        // para fotos); si no viene, inferir por el contenido o asumir jpeg.
+        let tipoMime = mimeType?.trim().toLowerCase() || '';
+        if (!tipoMime) {
+          const cab = imageBuffer.subarray(0, 8).toString('latin1');
+          tipoMime = cab.startsWith('%PDF') ? 'application/pdf' : 'image/jpeg';
+        }
         const body = {
           model: this.model,
           messages: [
@@ -77,7 +85,7 @@ export class OcrService {
                 {
                   type: 'image_url',
                   image_url: {
-                    url: `data:image/jpeg;base64,${b64}`,
+                    url: `data:${tipoMime};base64,${b64}`,
                   },
                 },
               ],

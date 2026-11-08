@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Factura } from '../entities/factura.entity';
 import { FacturaItem } from '../entities/factura-item.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateFacturaDto, UpdateFacturaDto } from './dto/factura.dto';
 
 export interface FacturasFiltros {
@@ -25,6 +26,7 @@ export class FacturasService {
     @InjectRepository(FacturaItem)
     private readonly itemsRepo: Repository<FacturaItem>,
     private readonly dataSource: DataSource,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   private buildWithFilters(filters: FacturasFiltros) {
@@ -163,6 +165,20 @@ export class FacturasService {
         );
         await manager.save(items);
       }
+
+      // Notificar en tiempo real (lista de facturas en el frontend).
+      try {
+        this.realtime.emitFacturaNueva({
+          id: saved.id,
+          numero_factura: saved.numero_factura,
+          proveedor: saved.proveedor,
+          fecha: saved.fecha,
+          total_con_impuestos: saved.total_con_impuestos,
+        });
+      } catch {
+        // El evento realtime nunca debe romper la creación de la factura.
+      }
+
       return saved;
     });
   }

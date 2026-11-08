@@ -58,6 +58,10 @@ export class RealtimeGateway
     this.server.emit('comanda:nueva', data);
   }
 
+  emitFacturaNueva(data: Record<string, unknown>) {
+    this.server.emit('factura:nueva', data);
+  }
+
   emitCocinaEstado(data: Record<string, unknown>) {
     this.server.emit('cocina:estado', data);
   }

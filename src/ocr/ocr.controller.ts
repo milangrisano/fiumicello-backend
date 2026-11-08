@@ -80,7 +80,7 @@ export class OcrController {
 
     let resultado: Awaited<ReturnType<OcrService['extractText']>>;
     try {
-      resultado = await this.ocr.extractText(buffer);
+      resultado = await this.ocr.extractText(buffer, file.mimetype);
     } catch (e) {
       fs.rmSync(rutaOriginal, { force: true });
       this.logger.error('OCR error', e as any);
