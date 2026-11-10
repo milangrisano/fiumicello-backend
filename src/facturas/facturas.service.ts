@@ -131,7 +131,9 @@ export class FacturasService {
     const qb = this.repo
       .createQueryBuilder('f')
       .where('f.numero_factura = :num', { num: dto.numero_factura });
-    if (dto.proveedor) qb.andWhere('f.proveedor = :prov', { prov: dto.proveedor });
+    // Identidad de factura = numero_factura + fecha (esquema AAAAMMDD_#factura_*).
+    // El proveedor es descriptivo en el nombre del archivo, no parte de la identidad,
+    // para que herb y el OCR no dupliquen por diferencias de mayúsculas/puntos/acentos.
     if (dto.fecha) qb.andWhere('f.fecha = :fecha', { fecha: dto.fecha });
     return qb.getOne();
   }
