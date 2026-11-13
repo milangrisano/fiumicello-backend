@@ -1,16 +1,21 @@
 import { Pool } from 'pg';
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
 import * as zlib from 'zlib';
 import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../app-version';
 
 const RETENTION = parseInt(process.env.SNAPSHOT_RETENTION || '7', 10);
+// Timeout de seguridad: el snapshot NUNCA debe trabar el arranque.
+const SNAPSHOT_TIMEOUT_MS = parseInt(process.env.SNAPSHOT_TIMEOUT_MS || '120000', 10);
 
 export class SnapshotService {
   /** Trigger: se ejecuta ANTES de NestFactory.create para capturar el estado
-   *  previo a que TypeORM sincronice el esquema. No-op si la versión no cambió. */
+   *  previo a que TypeORM sincronice el esquema. No-op si la versión no cambió.
+   *  NO-bloqueante: cualquier error o timeout se captura y loguea sin impedir
+   *  el arranque del backend (el snapshot es un respaldo, no un guardián). */
   async runOnStartup(): Promise<void> {
+    const started = Date.now();
     const db = {
       host: process.env.DB_HOST || 'db',
       port: parseInt(process.env.DB_PORT || '5432', 10),
@@ -30,7 +35,14 @@ export class SnapshotService {
       fs.mkdirSync(dir, { recursive: true });
       const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
       const out = path.join(dir, `fiumicello_${APP_VERSION}_${stamp}.sql.gz`);
-      await this.dump(db, out); // lanza si pg_dump falla (fail-fast)
+      // Timeout: si el dump excede el límite, no traba el arranque.
+      await Promise.race([
+        this.dump(db, out),
+        new Promise<void>((_, rej) => setTimeout(
+          () => rej(new Error(`snapshot timeout (${SNAPSHOT_TIMEOUT_MS}ms)`)),
+          SNAPSHOT_TIMEOUT_MS,
+        )),
+      ]);
 
       // Registrar versión aplicada
       await pool.query(
@@ -38,8 +50,11 @@ export class SnapshotService {
          ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
         [APP_VERSION],
       );
-      console.log(`snapshot OK: ${out}`);
+      console.log(`snapshot OK: ${out} (${Date.now() - started}ms)`);
       this.prune(dir);
+    } catch (e) {
+      // El snapshot es un respaldo, NO debe tumbar el backend. Loguear y seguir.
+      console.error(`snapshot omitido (no bloquea arranque): ${e instanceof Error ? e.message : e}`);
     } finally {
       await pool.end();
     }
@@ -47,35 +62,29 @@ export class SnapshotService {
 
   private dump(db: { host: string; port: number; user: string; password: string; database: string }, out: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const pg = execFile(
-        'pg_dump',
-        ['-h', db.host, '-p', String(db.port), '-U', db.user, '-d', db.database,
-         '--no-owner', '--no-privileges'],
-        { env: { ...process.env, PGPASSWORD: db.password } },
-      );
-      if (!pg.stdout) {
-        reject(new Error('snapshot falló: pg_dump sin stream de salida'));
-        return;
-      }
+      // spawn (NO execFile): execFile bufferiza la salida hasta 1 MiB por
+      // defecto y mata pg_dump con BD grande (connection reset en facturas_items).
+      const pg = spawn('pg_dump', [
+        '-h', db.host, '-p', String(db.port), '-U', db.user, '-d', db.database,
+        '--no-owner', '--no-privileges',
+      ], { env: { ...process.env, PGPASSWORD: db.password }, stdio: ['ignore', 'pipe', 'pipe'] });
       let stderrText = '';
       let code: number | null = null;
       let procesoCerrado = false;
       let streamTerminado = false;
-      let resultado: 'ok' | 'err' | null = null;
-      if (pg.stderr) pg.stderr.on('data', (d: Buffer) => { stderrText += d.toString(); });
+      let resultado: boolean = false;
+      pg.stderr.on('data', (d: Buffer) => { stderrText += d.toString(); });
       const gz = zlib.createGzip();
       const ws = fs.createWriteStream(out);
       pg.stdout.pipe(gz).pipe(ws);
       pg.on('error', reject);
       ws.on('error', reject);
-      // Cerrar la promesa SOLO cuando el proceso cerró Y el stream terminó
-      // (evita: gzip truncado si cierras antes; o colgar si el stream no cierra).
       const intentar = () => {
         if (resultado) return;
         if (!(procesoCerrado && streamTerminado)) return;
-        resultado = 'ok';
+        resultado = true;
         if (code === 0) resolve();
-        else reject(new Error(`snapshot falló: pg_dump exit ${code ? String(code) : '?'}${stderrText.trim() ? ': ' + stderrText.trim() : ''}`));
+        else reject(new Error(`pg_dump exit ${code ? String(code) : '?'}${stderrText.trim() ? ': ' + stderrText.trim() : ''}`));
       };
       pg.on('close', (c) => { code = c ?? -1; procesoCerrado = true; intentar(); });
       ws.on('finish', () => { streamTerminado = true; intentar(); });
@@ -83,9 +92,11 @@ export class SnapshotService {
   }
 
   private prune(dir: string): void {
-    const files = fs.readdirSync(dir)
-      .filter((f) => f.startsWith('fiumicello_') && f.endsWith('.sql.gz'))
-      .sort().reverse();
-    files.slice(RETENTION).forEach((f) => fs.unlinkSync(path.join(dir, f)));
+    try {
+      const files = fs.readdirSync(dir)
+        .filter((f) => f.startsWith('fiumicello_') && f.endsWith('.sql.gz'))
+        .sort().reverse();
+      files.slice(RETENTION).forEach((f) => fs.unlinkSync(path.join(dir, f)));
+    } catch { /* ignorar errores de limpieza */ }
   }
 }
