@@ -7,6 +7,7 @@ import { RefreshToken } from '../entities/refresh-token.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { requireEnv } from '../common/env';
 import { EmailService, EmailServiceSimulado, EmailServiceReal } from './email.service';
 import { RolesPermisosService } from './roles-permisos.service';
 import { RolesService } from './roles.service';
@@ -16,7 +17,7 @@ import { RolesController } from './roles.controller';
   imports: [
     TypeOrmModule.forFeature([Usuario, Rol, RefreshToken]),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'fiumicello-dev-secret-change-me',
+      secret: requireEnv('JWT_SECRET', 'secreto de firma JWT'),
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '12h') as unknown as number },
     }),
   ],

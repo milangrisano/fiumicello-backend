@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UserRole } from '../entities/usuario.entity';
 import { JwtUser } from './current-user.decorator';
+import { requireEnv } from '../common/env';
 
 export interface JwtPayload {
   sub: number;
@@ -16,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'fiumicello-dev-secret-change-me',
+      secretOrKey: requireEnv('JWT_SECRET', 'secreto de firma JWT'),
     });
   }
 
