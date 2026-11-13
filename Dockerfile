@@ -11,6 +11,10 @@ RUN npm run build
 FROM node:22 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# pg_dump para el snapshot de BD por cambio de versión (SnapshotService)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci --only=production --no-audit --no-fund
 COPY --from=build /app/dist ./dist

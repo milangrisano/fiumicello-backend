@@ -2,8 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { SnapshotService } from './snapshot/snapshot.service';
 
 async function bootstrap() {
+  // Snapshot de BD: si la versión cambió, respalda el contenido previo ANTES
+  // de que TypeORM sincronice el esquema. Fail-fast si el dump falla.
+  await new SnapshotService().runOnStartup();
+
   const app = await NestFactory.create(AppModule);
 
   // Headers de seguridad (CSP, X-Frame-Options, X-Content-Type-Options, HSTS).
