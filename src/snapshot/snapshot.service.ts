@@ -58,19 +58,27 @@ export class SnapshotService {
         return;
       }
       let stderrText = '';
+      let code: number | null = null;
+      let procesoCerrado = false;
+      let streamTerminado = false;
+      let resultado: 'ok' | 'err' | null = null;
       if (pg.stderr) pg.stderr.on('data', (d: Buffer) => { stderrText += d.toString(); });
       const gz = zlib.createGzip();
       const ws = fs.createWriteStream(out);
       pg.stdout.pipe(gz).pipe(ws);
       pg.on('error', reject);
       ws.on('error', reject);
-      // Registrar 'close' aquí (inmediatamente), no dentro de otro callback, para
-      // no perder el evento si pg_dump termina antes de que fluya 'finish'.
-      pg.on('close', (code) => {
-        ws.end();
+      // Cerrar la promesa SOLO cuando el proceso cerró Y el stream terminó
+      // (evita: gzip truncado si cierras antes; o colgar si el stream no cierra).
+      const intentar = () => {
+        if (resultado) return;
+        if (!(procesoCerrado && streamTerminado)) return;
+        resultado = 'ok';
         if (code === 0) resolve();
-        else reject(new Error(`snapshot falló: pg_dump exit ${code}${stderrText.trim() ? ': ' + stderrText.trim() : ''}`));
-      });
+        else reject(new Error(`snapshot falló: pg_dump exit ${code ? String(code) : '?'}${stderrText.trim() ? ': ' + stderrText.trim() : ''}`));
+      };
+      pg.on('close', (c) => { code = c ?? -1; procesoCerrado = true; intentar(); });
+      ws.on('finish', () => { streamTerminado = true; intentar(); });
     });
   }
 
