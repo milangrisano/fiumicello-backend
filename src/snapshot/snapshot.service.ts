@@ -53,19 +53,23 @@ export class SnapshotService {
          '--no-owner', '--no-privileges'],
         { env: { ...process.env, PGPASSWORD: db.password } },
       );
-      if (!pg.stdout || !pg.stderr) {
+      if (!pg.stdout) {
         reject(new Error('snapshot falló: pg_dump sin stream de salida'));
         return;
       }
+      let stderrText = '';
+      if (pg.stderr) pg.stderr.on('data', (d: Buffer) => { stderrText += d.toString(); });
       const gz = zlib.createGzip();
       const ws = fs.createWriteStream(out);
       pg.stdout.pipe(gz).pipe(ws);
-      pg.stderr.on('data', (d: Buffer) => console.warn('pg_dump stderr:', d.toString().trim()));
       pg.on('error', reject);
       ws.on('error', reject);
-      ws.on('finish', () => {
-        pg.on('close', (code) => (code === 0 ? resolve() : reject(
-          new Error(`snapshot falló: pg_dump exit ${code}`))));
+      // Registrar 'close' aquí (inmediatamente), no dentro de otro callback, para
+      // no perder el evento si pg_dump termina antes de que fluya 'finish'.
+      pg.on('close', (code) => {
+        ws.end();
+        if (code === 0) resolve();
+        else reject(new Error(`snapshot falló: pg_dump exit ${code}${stderrText.trim() ? ': ' + stderrText.trim() : ''}`));
       });
     });
   }
