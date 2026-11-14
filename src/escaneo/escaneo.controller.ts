@@ -20,6 +20,8 @@ import { OcrService } from '../ocr/ocr.service';
 import { SidecarService } from '../ocr/sidecar.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
+import { RequirePermiso } from '../auth/permiso.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 /** Raíz de archivos servidos por nginx (/archivos/...). */
 const IMAGENES_DIR =
@@ -54,6 +56,7 @@ export class EscaneoController {
    * (id + URL de vista previa). NO guarda en el destino final.
    */
   @Post('previsualizar')
+  @RequirePermiso(PERMISSIONS.facturas_ver)
   @UseInterceptors(
     FileInterceptor('archivo', {
       storage: diskStorage({
@@ -121,6 +124,7 @@ export class EscaneoController {
    * (facturas/AAAA/MM/... o comprobantes/...), creando el registro en BD.
    */
   @Post('confirmar')
+  @RequirePermiso(PERMISSIONS.facturas_ver)
   async confirmar(
     @Body()
     body: {

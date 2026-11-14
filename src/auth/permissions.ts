@@ -50,6 +50,10 @@ export const PERMISSIONS = {
   // Carta (menu)
   carta_ver: 'carta:ver',
   carta_editar: 'carta:editar',
+
+  // Auth (auto-grant a cualquier usuario autenticado/aprobado, NO atado a rol)
+  auth_cambiar_clave: 'auth:cambiar-clave',
+  auth_ver_mis_permisos: 'auth:ver-mis-permisos',
 } as const;
 
 export type Permission = string;
@@ -97,6 +101,9 @@ export const PERMISSION_DEFS: PermissionDef[] = [
   // Carta
   { key: PERMISSIONS.carta_ver, label: 'Ver carta', modulo: 'Carta (menú)' },
   { key: PERMISSIONS.carta_editar, label: 'Editar carta', modulo: 'Carta (menú)' },
+  // Autenticación (self-service: automático para todo usuario aprobado, no por rol)
+  { key: PERMISSIONS.auth_cambiar_clave, label: 'Cambiar mi contraseña', modulo: 'Autenticación' },
+  { key: PERMISSIONS.auth_ver_mis_permisos, label: 'Ver mis permisos (interfaz)', modulo: 'Autenticación' },
 ];
 
 /** The SuperAdmin role is special: it implicitly has ALL permissions. */

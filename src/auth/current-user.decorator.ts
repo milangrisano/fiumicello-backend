@@ -5,6 +5,8 @@ export interface JwtUser {
   id: number;
   email: string | null;
   rol: UserRole;
+  /** Solo presente en tokens de servicio (ej. 'herb'). Null en usuarios humanos. */
+  nombreServicio?: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

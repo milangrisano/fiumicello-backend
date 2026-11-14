@@ -41,7 +41,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       // Otherwise try as a service token.
       const svc = await this.auth.findByApiToken(token);
       if (svc && svc.estado === 'aprobado') {
-        req.user = { id: svc.id, email: svc.email, rol: svc.rol };
+        req.user = {
+          id: svc.id,
+          email: svc.email,
+          rol: svc.rol,
+          nombreServicio: svc.nombre_servicio ?? null,
+        };
         return true;
       }
       return false;

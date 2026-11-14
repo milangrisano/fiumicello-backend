@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
   Logger,
   Post,
+  Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -14,6 +16,8 @@ import { OcrService } from './ocr.service';
 import { SidecarService } from './sidecar.service';
 import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
+import { RequirePermiso } from '../auth/permiso.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 /**
  * Raíz de imágenes servida por nginx como `/archivos/...`. Configurable por
@@ -61,6 +65,7 @@ export class OcrController {
    * Devuelve el registro creado (o si ya existía, para avisarlo).
    */
   @Post('subir')
+  @RequirePermiso(PERMISSIONS.facturas_crear)
   @UseInterceptors(
     FileInterceptor('archivo', {
       storage: diskStorage({
@@ -73,7 +78,13 @@ export class OcrController {
       limits: { fileSize: 20 * 1024 * 1024 }, // máx 20 MB
     }),
   )
-  async subir(@UploadedFile() file?: Express.Multer.File) {
+  async subir(@Req() req: Request, @UploadedFile() file?: Express.Multer.File) {
+    // OCR de carga automática: SOLO tokens de servicio (herb y n8n). La
+    // interfaz humana (JWT sin nombreServicio) NO lo puede usar.
+    const usuario = (req as unknown as { user?: { nombreServicio?: string | null } }).user;
+    if (!usuario || !usuario.nombreServicio) {
+      throw new ForbiddenException('OCR dedicado a un servicio autorizado.');
+    }
     if (!file) throw new BadRequestException('No se recibió ningún archivo.');
     const rutaOriginal = file.path;
     const buffer = fs.readFileSync(rutaOriginal);

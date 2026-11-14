@@ -19,6 +19,8 @@ import { Roles } from './roles.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { RolesPermisosService } from './roles-permisos.service';
 import { CurrentUser, JwtUser } from './current-user.decorator';
+import { RequirePermiso } from './permiso.decorator';
+import { PERMISSIONS } from './permissions';
 
 /** Lee el valor de una cookie desde el header 'Cookie' (sin cookie-parser). */
 function cookieValue(req: Request, name: string): string {
@@ -52,6 +54,7 @@ export class AuthController {
   // ---- Permissions of the logged-in user (frontend menu/actions) ----
   @Get('mis-permisos')
   @Roles('superadmin', 'admin', 'encargado', 'cajero', 'cocinero', 'mesero', 'ayudante', 'editor')
+  @RequirePermiso(PERMISSIONS.auth_ver_mis_permisos)
   async misPermisos(@CurrentUser() user: JwtUser) {
     const permisos = await this.permisos.permisosDeUsuario(user.rol);
     return { rol: user.rol, permisos };
@@ -156,6 +159,8 @@ export class AuthController {
   // ---- Change password (logged-in user) ----
   @Post('cambiar-contrasena')
   @HttpCode(HttpStatus.OK)
+  // Cualquier usuario aprobado (auto-grant, no depende del rol).
+  @RequirePermiso(PERMISSIONS.auth_cambiar_clave)
   // Anti fuerza bruta de la contraseña actual: máximo 5 intentos por minuto.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async cambiarContrasena(
@@ -173,6 +178,7 @@ export class AuthController {
   // ---- Admin: list pending approvals ----
   @Get('usuarios/pendientes')
   @Roles('superadmin', 'admin')
+  @RequirePermiso(PERMISSIONS.usuarios_gestionar)
   async pendientes() {
     return this.auth.listPendientes();
   }
@@ -180,6 +186,7 @@ export class AuthController {
   // ---- Admin: list all users ----
   @Get('usuarios')
   @Roles('superadmin', 'admin')
+  @RequirePermiso(PERMISSIONS.usuarios_gestionar)
   async listarUsuarios() {
     return this.auth.listarUsuarios();
   }
@@ -187,6 +194,7 @@ export class AuthController {
   // ---- Admin: approve a user ----
   @Post('usuarios/:id/aprobar')
   @Roles('superadmin', 'admin')
+  @RequirePermiso(PERMISSIONS.usuarios_gestionar)
   @HttpCode(HttpStatus.OK)
   async aprobar(@Param('id', ParseIntPipe) id: number) {
     await this.auth.approveUser(id);
@@ -196,6 +204,7 @@ export class AuthController {
   // ---- Admin: assign a role to a user ----
   @Post('usuarios/:id/rol')
   @Roles('superadmin', 'admin')
+  @RequirePermiso(PERMISSIONS.usuarios_gestionar)
   @HttpCode(HttpStatus.OK)
   async asignarRol(
     @Param('id', ParseIntPipe) id: number,
@@ -209,6 +218,7 @@ export class AuthController {
   // ---- Superadmin: list service tokens ----
   @Get('servicios')
   @Roles('superadmin')
+  @RequirePermiso(PERMISSIONS.tokens_gestionar)
   async listServicios() {
     return this.auth.listServiceTokens();
   }
@@ -216,6 +226,7 @@ export class AuthController {
   // ---- Superadmin: generate a service token (shown once) ----
   @Post('servicios')
   @Roles('superadmin')
+  @RequirePermiso(PERMISSIONS.tokens_gestionar)
   @HttpCode(HttpStatus.CREATED)
   async generarServicio(@Body() body: { nombre?: string }) {
     return this.auth.generateServiceToken(body.nombre || '');
@@ -224,6 +235,7 @@ export class AuthController {
   // ---- Superadmin: revoke a service token ----
   @Delete('servicios/:id')
   @Roles('superadmin')
+  @RequirePermiso(PERMISSIONS.tokens_gestionar)
   @HttpCode(HttpStatus.OK)
   async revocar(@Param('id', ParseIntPipe) id: number) {
     await this.auth.revokeServiceToken(id);
