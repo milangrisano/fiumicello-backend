@@ -9,7 +9,15 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { PedidosService, CreatePedidoInput, AddItemInput } from './pedidos.service';
+import { PedidosService } from './pedidos.service';
+import {
+  CreatePedidoDto,
+  AgregarItemsPedidoDto,
+  CambiarEstadoCocinaDto,
+  CobrarPedidoDto,
+  SolicitarAnulacionDto,
+  AnularPedidoDto,
+} from './dto/pedidos.dto';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { CurrentUser, JwtUser } from '../auth/current-user.decorator';
@@ -21,7 +29,7 @@ export class PedidosController {
   @Post()
   @RequirePermiso(PERMISSIONS.ventas_crear)
   @HttpCode(HttpStatus.CREATED)
-  crear(@Body() body: CreatePedidoInput, @CurrentUser() user: JwtUser) {
+  crear(@Body() body: CreatePedidoDto, @CurrentUser() user: JwtUser) {
     return this.pedidos.crear(body, user?.id || 0);
   }
 
@@ -38,7 +46,7 @@ export class PedidosController {
   @RequirePermiso(PERMISSIONS.cocina_actualizar)
   cambiarEstadoCocina(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { estado_cocina: string },
+    @Body() body: CambiarEstadoCocinaDto,
   ) {
     return this.pedidos.cambiarEstadoCocina(id, body.estado_cocina || '');
   }
@@ -61,13 +69,13 @@ export class PedidosController {
 
   @Post(':id/items')
   @RequirePermiso(PERMISSIONS.ventas_crear)
-  agregarItems(@Param('id', ParseIntPipe) id: number, @Body() body: { items: AddItemInput[] }) {
+  agregarItems(@Param('id', ParseIntPipe) id: number, @Body() body: AgregarItemsPedidoDto) {
     return this.pedidos.agregarItemsApi(id, body.items || []);
   }
 
   @Post(':id/cobrar')
   @RequirePermiso(PERMISSIONS.ventas_crear)
-  cobrar(@Param('id', ParseIntPipe) id: number, @Body() body: { id_forma_pago?: number | null }) {
+  cobrar(@Param('id', ParseIntPipe) id: number, @Body() body: CobrarPedidoDto) {
     return this.pedidos.cobrar(id, body.id_forma_pago);
   }
 
@@ -82,7 +90,7 @@ export class PedidosController {
   @RequirePermiso(PERMISSIONS.ventas_crear)
   solicitarAnulacion(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { motivo?: string | null },
+    @Body() body: SolicitarAnulacionDto,
     @CurrentUser() user: JwtUser,
   ) {
     return this.pedidos.solicitarAnulacion(id, body?.motivo || '', user?.id || 0);
@@ -93,7 +101,7 @@ export class PedidosController {
   @RequirePermiso(PERMISSIONS.pedidos_anular)
   anular(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { password?: string },
+    @Body() body: AnularPedidoDto,
     @CurrentUser() user: JwtUser,
   ) {
     return this.pedidos.anular(id, body?.password || '', { id: user?.id || 0, rol: user?.rol || '' });
