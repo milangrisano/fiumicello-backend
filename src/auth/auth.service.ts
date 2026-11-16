@@ -262,15 +262,19 @@ export class AuthService {
     if (!user || !user.password_hash) {
       throw new UnauthorizedException('Credenciales inválidas.');
     }
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      throw new UnauthorizedException('Credenciales inválidas.');
-    }
+    // Estado ANTES de la contraseña: un desactivado o pendiente siempre ve su
+    // mensaje específico, no "email/contraseña incorrectos". (En este sistema
+    // las cuentas se verifican por email y se gestionan internamente, así que
+    // revelar el estado no es enumeración de cuentas.)
     if (user.estado === 'pendiente') {
       throw new UnauthorizedException('Tu cuenta está pendiente de aprobación.');
     }
     if (user.estado === 'desactivado') {
       throw new UnauthorizedException('Tu cuenta está desactivada.');
+    }
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      throw new UnauthorizedException('Credenciales inválidas.');
     }
     // Access token (corto) + refresh token (opaco, rotado, hash en BD).
     const refresh = this.rawRefresh();
@@ -434,12 +438,7 @@ export class AuthService {
     if (!user) throw new BadRequestException('Usuario no encontrado.');
     user.estado = 'aprobado';
     await this.usuarios.save(user);
-    if (user.email) {
-      await this.email.sendAccountStatus(
-        user.email,
-        'Tu cuenta fue aprobada. Ya puedes iniciar sesión.',
-      );
-    }
+    // Sin correo de activación (decisión de Enrique: no avisar por email).
   }
 
   /**
@@ -466,14 +465,7 @@ export class AuthService {
     }
     user.estado = nuevoEstado;
     await this.usuarios.save(user);
-    if (user.email) {
-      await this.email.sendAccountStatus(
-        user.email,
-        nuevoEstado === 'desactivado'
-          ? 'Tu cuenta fue desactivada. Ya no puedes iniciar sesión.'
-          : 'Tu cuenta fue reactivada. Ya puedes iniciar sesión.',
-      );
-    }
+    // Sin correo de desactivación/reactivación (decisión de Enrique).
   }
 
   async asignarRol(id: number, nuevoRol: string, actorRol: string): Promise<void> {
