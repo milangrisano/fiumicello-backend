@@ -14,6 +14,7 @@ import { CartaService } from './carta.service';
 import { Public } from '../auth/public.decorator';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { CategoriaDto, ItemCartaDto } from './dto/carta.dto';
 
 @Controller('carta')
 export class CartaController {
@@ -38,13 +39,13 @@ export class CartaController {
   @Post('categorias')
   @RequirePermiso(PERMISSIONS.carta_editar)
   @HttpCode(HttpStatus.CREATED)
-  crearCategoria(@Body() b: { nombre: string; orden?: number }) {
+  crearCategoria(@Body() b: CategoriaDto) {
     return this.carta.crearCategoria(b.nombre, b.orden);
   }
 
   @Put('categorias/:id')
   @RequirePermiso(PERMISSIONS.carta_editar)
-  actualizarCategoria(@Param('id', ParseIntPipe) id: number, @Body() b: { nombre: string; orden?: number }) {
+  actualizarCategoria(@Param('id', ParseIntPipe) id: number, @Body() b: CategoriaDto) {
     return this.carta.actualizarCategoria(id, b.nombre, b.orden);
   }
 
@@ -58,13 +59,13 @@ export class CartaController {
   @Post('items')
   @RequirePermiso(PERMISSIONS.carta_editar)
   @HttpCode(HttpStatus.CREATED)
-  crearItem(@Body() b: Record<string, unknown>) {
+  crearItem(@Body() b: ItemCartaDto) {
     return this.carta.crearItem(b as never);
   }
 
   @Put('items/:id')
   @RequirePermiso(PERMISSIONS.carta_editar)
-  actualizarItem(@Param('id', ParseIntPipe) id: number, @Body() b: Record<string, unknown>) {
+  actualizarItem(@Param('id', ParseIntPipe) id: number, @Body() b: ItemCartaDto) {
     return this.carta.actualizarItem(id, b as never);
   }
 

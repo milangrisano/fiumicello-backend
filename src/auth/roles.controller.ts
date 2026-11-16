@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { RolesPermisosService } from './roles-permisos.service';
+import { CrearRolDto, ActualizarRolDto } from './dto/roles.dto';
 import { CurrentUser, JwtUser } from './current-user.decorator';
 import { RequirePermiso } from './permiso.decorator';
 import { PERMISSIONS } from './permissions';
@@ -47,7 +48,7 @@ export class RolesController {
   @HttpCode(HttpStatus.CREATED)
   crear(
     @CurrentUser() user: JwtUser,
-    @Body() body: { nombre: string; descripcion?: string; permisos?: string[] },
+    @Body() body: CrearRolDto,
   ) {
     return this.roles.crear(user.rol, body.nombre, body.descripcion || null, body.permisos || []);
   }
@@ -57,7 +58,7 @@ export class RolesController {
   actualizar(
     @CurrentUser() user: JwtUser,
     @Param('nombre') nombre: string,
-    @Body() body: { nombre?: string; descripcion?: string; permisos?: string[] },
+    @Body() body: ActualizarRolDto,
   ) {
     return this.roles.actualizar(
       user.rol,
