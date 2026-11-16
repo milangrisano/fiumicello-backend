@@ -3,7 +3,9 @@
 FROM node:22 AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+# npm install (no ci): tolera package-lock desactualizado en el repo y lo
+# actualiza dentro del contenedor (p. ej. al añadir dependencias nuevas).
+RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
@@ -24,7 +26,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client-16 \
  && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --no-fund
+RUN npm install --only=production --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/main"]
