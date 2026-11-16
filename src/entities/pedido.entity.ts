@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, DeleteDateColumn } from 'typeorm';
 
 /**
  * A POS order. Lifecycle depends on the scenario:
@@ -71,4 +71,9 @@ export class Pedido {
 
   @Column({ type: 'text', nullable: true })
   hora_entrega: string | null;
+
+  // Soft delete (el pedido se conserva/excluye; los históricos de venta se
+  // mantienen). El borrado real no aplica: los pedidos se anulan lógicamente.
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 }

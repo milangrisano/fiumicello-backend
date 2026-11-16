@@ -297,8 +297,9 @@ export class PedidosService {
   async cancelar(id: number) {
     const p = await this.pedidos.findOneBy({ id });
     if (!p) throw new NotFoundException('Pedido no encontrado.');
-    await this.pedidoItems.delete({ id_pedido: id });
-    await this.pedidos.delete(id);
+    // Soft delete: se conserva el pedido y su histórico (los pedidos se anulan
+    // lógicamente; no se borran físico).
+    await this.pedidos.softDelete(id);
     return { ok: true };
   }
 

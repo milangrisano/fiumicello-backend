@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate, DeleteDateColumn } from 'typeorm';
 import { extraer4 } from './factura.entity';
 
 @Entity('comprobantes_pago')
@@ -61,6 +61,11 @@ export class ComprobantePago {
   // beneficiario): 'transferencia' | 'proveedor' | null (auto).
   @Column({ type: 'text', nullable: true })
   tipo_manual: string | null;
+
+  // Soft delete: se conserva la fila (auditabilidad contable), se excluye de
+  // las consultas normales vía @DeleteDateColumn.
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 
   // Últimos 4 dígitos hallados en el método de pago (identifica cuenta/tarjeta).
   @Column({ type: 'text', nullable: true })

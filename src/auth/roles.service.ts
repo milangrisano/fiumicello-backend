@@ -227,7 +227,10 @@ export class RolesService {
     if (role.es_base) {
       throw new BadRequestException('No se puede eliminar un rol base.');
     }
-    await this.roles.delete(role.id);
+    // Soft delete: se marca deleted_at (el rol queda excluido de listas pero
+    // se conserva). Al quitar la Unique de nombre (ver entidad) no se bloquea
+    // recrear un rol con el mismo nombre más adelante.
+    await this.roles.softDelete(role.id);
     return { ok: true };
   }
 }

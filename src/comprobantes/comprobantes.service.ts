@@ -77,7 +77,9 @@ export class ComprobantesService {
 
   async remove(id: number): Promise<{ deleted: boolean; id: number }> {
     await this.findOne(id);
-    await this.repo.delete(id);
+    // Soft delete: se marca deleted_at (histórico contable conservado y
+    // excluido de consultas normales).
+    await this.repo.softDelete(id);
     return { deleted: true, id };
   }
 }

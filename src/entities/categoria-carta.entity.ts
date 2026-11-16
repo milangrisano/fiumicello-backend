@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, DeleteDateColumn } from 'typeorm';
 
 /**
  * A menu category (e.g. Pizzas, Pizzas de la Casa, Pastas, Paninis, Bebidas).
@@ -16,4 +16,8 @@ export class CategoriaCarta {
 
   @Column({ type: 'text', nullable: true })
   created_at: string | null;
+
+  // Soft delete (se excluye de consultas, se conserva el registro).
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 }

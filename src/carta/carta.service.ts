@@ -133,8 +133,9 @@ export class CartaService {
   }
 
   async eliminarCategoria(id: number) {
-    await this.categorias.delete(id);
-    await this.items.delete({ id_categoria: id });
+    // Soft delete (se marca deleted_at; los items asociados se conservan para
+    // el historial, solo se ocultan). No borra físico.
+    await this.categorias.softDelete(id);
     return { ok: true };
   }
 
@@ -196,7 +197,8 @@ export class CartaService {
   }
 
   async eliminarItem(id: number) {
-    await this.items.delete(id);
+    // Soft delete (se marca deleted_at; se conserva para historial de ventas).
+    await this.items.softDelete(id);
     return { ok: true };
   }
 

@@ -212,8 +212,9 @@ export class FacturasService {
 
   async remove(id: number): Promise<{ deleted: boolean; id: number }> {
     await this.findOne(id);
-    await this.itemsRepo.delete({ id_factura: id });
-    await this.repo.delete(id);
+    // Soft delete: se marca deleted_at (la fila y su histórico contable queda
+    // en BD, excluida de consultas). No borra físico los ítems.
+    await this.repo.softDelete(id);
     return { deleted: true, id };
   }
 }

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, BeforeInsert, BeforeUpdate, DeleteDateColumn } from 'typeorm';
 
 @Entity('facturas')
 export class Factura {
@@ -48,7 +48,12 @@ export class Factura {
  created_at: string | null;
 
   @Column({ type: 'integer', nullable: true })
- id_comprobante: number | null;
+    id_comprobante: number | null;
+
+    // Soft delete: la fila permanece en BD (auditabilidad contable), solo se
+    // excluye de las consultas normales. Sustituye al DELETE físico.
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    deleted_at?: Date | null;
 
   @Column({ type: 'text', nullable: true })
   referencia_comprobante: string | null;

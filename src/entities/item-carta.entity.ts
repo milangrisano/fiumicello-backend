@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, DeleteDateColumn } from 'typeorm';
 
 /**
  * A menu item, belonging to a category, with optional per-size prices (COP).
@@ -44,4 +44,8 @@ export class ItemCarta {
 
   @Column({ type: 'text', nullable: true })
   created_at: string | null;
+
+  // Soft delete (se conserva, se excluye de la carta/consultas).
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 }

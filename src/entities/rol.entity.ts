@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Unique, DeleteDateColumn } from 'typeorm';
 
 /**
  * A configurable role. Holds its name and the set of permissions assigned to it.
@@ -8,7 +8,8 @@ import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
  * may not be present as a row.
  */
 @Entity('roles')
-@Unique(['nombre'])
+// La Unique de nombre se quitó para permitir soft-delete (recrear un rol con
+// el mismo nombre tras marcarlo deleted_at) — el borrado es lógico, no físico.
 export class Rol {
   @PrimaryGeneratedColumn()
   id: number;
@@ -31,6 +32,11 @@ export class Rol {
 
   @Column({ type: 'text', nullable: true })
   created_at: string | null;
+
+  // Soft delete (los usuarios pueden seguir referenciando el nombre si no se
+  // reutiliza; se excluye de listas normales).
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 
   /** Convenience accessor for the permission array. */
   get permisos(): string[] {

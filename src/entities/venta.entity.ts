@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, DeleteDateColumn } from 'typeorm';
 
 /**
  * A sale (POS invoice). Carries a visible consecutive invoice number (F-0001),
@@ -57,4 +57,9 @@ export class Venta {
 
   @Column({ type: 'text', nullable: true })
   fecha: string | null;
+
+  // Soft delete: además de anulada (excluye totales), permite borrar soft
+  // manteniendo el registro contable (auditabilidad). Excluida de consultas.
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deleted_at?: Date | null;
 }

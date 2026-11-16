@@ -188,13 +188,13 @@ export class VentasService {
     return this.ventas.save(v);
   }
 
-  /** Elimina físicamente una venta y sus ítems. SOLO superadmin (lo valida el
-   *  controller). Desaparece de los totales generales definitivamente. */
+  /** Soft delete de una venta (antes borrado físico). SOLO superadmin (lo valida
+   *  el controller). Se marca deleted_at: el registro y su histórico contable
+   *  permanecen en BD, excluidos de las consultas normales. */
   async eliminar(id: number): Promise<{ ok: boolean }> {
     const v = await this.ventas.findOneBy({ id });
     if (!v) throw new NotFoundException('Venta no encontrada.');
-    await this.ventaItems.delete({ id_venta: id });
-    await this.ventas.delete(id);
+    await this.ventas.softDelete(id);
     return { ok: true };
   }
 
@@ -222,8 +222,13 @@ export class VentasService {
     return fp;
   }
   async eliminarFormaPago(id: number) {
-    await this.formasPago.delete(id);
-    return { ok: true };
+    // Los métodos de pago NUNCA se eliminan físico (histórico de pagos): se
+    // desactivan. El frontend admin no expone borrar, solo toggle de `activo`.
+    const fp = await this.formasPago.findOneBy({ id });
+    if (!fp) throw new NotFoundException('Forma de pago no encontrada.');
+    fp.activo = false;
+    await this.formasPago.save(fp);
+    return { ok: true, activo: false };
   }
 
   /** Seed default payment methods if the catalog is empty. */
