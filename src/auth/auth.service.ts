@@ -386,9 +386,11 @@ export class AuthService {
     if (!user || !user.api_token_hash) {
       throw new BadRequestException('No es un token de servicio.');
     }
-    user.api_token_hash = null;
-    user.nombre_servicio = null;
-    await this.usuarios.save(user);
+    // Un token de servicio no es un usuario humano (no tiene email ni clave):
+    // al revocarlo se ELIMINA la fila para que no quede un fantasma
+    // "servicio: ?" en la lista de Usuarios. (delete físico correcto aquí,
+    // no aplica soft-delete: son credenciales, no data contable.)
+    await this.usuarios.delete(id);
   }
 
   // ---- admin approval ----
@@ -408,7 +410,14 @@ export class AuthService {
 
   /** List users for the admin screen (never expose password_hash/tokens). */
   async listarUsuarios() {
-    const rows = await this.usuarios.find({ order: { id: 'ASC' } });
+    const rows = await this.usuarios
+      .createQueryBuilder('u')
+      // Solo usuarios HUMANOS: los servicios (sin email) se listan en la
+      // pestaña de Tokens, no en la de Usuarios. Esto evita los fantasmas
+      // "(servicio: ?)" de tokens revocados.
+      .where('u.email IS NOT NULL')
+      .orderBy('u.id', 'ASC')
+      .getMany();
     return rows.map((u) => ({
       id: u.id,
       email: u.email,

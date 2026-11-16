@@ -273,6 +273,29 @@ export const CATALOGO_JERARQUICO: BotonPermisos[] = [
         ],
       },
       {
+        pestana: 'Productos / Carta',
+        servicios: [
+          {
+            servicio: 'Carta',
+            crud: [
+              { permiso: PERMISSIONS.carta_editar, etiqueta: 'Editar menú / productos' },
+            ],
+          },
+        ],
+      },
+      {
+        pestana: 'Pagos',
+        servicios: [
+          {
+            servicio: 'Formas de pago',
+            crud: [
+              { permiso: PERMISSIONS.ventas_ver, etiqueta: 'Ver formas de pago' },
+              { permiso: PERMISSIONS.ventas_crear, etiqueta: 'Crear / modificar formas' },
+            ],
+          },
+        ],
+      },
+      {
         pestana: 'Servicios / Tokens',
         servicios: [
           {
