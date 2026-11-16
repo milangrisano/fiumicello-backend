@@ -373,6 +373,139 @@ async function main() {
   const svcRevoked = await raw('GET', '/auth/mis-permisos', { token: SVC_TOKEN });
   check('token revocado ya NO autentica → 401/403', svcRevoked.status === 401 || svcRevoked.status === 403, `status=${svcRevoked.status}`);
 
+  // ============ FASE 2A: POST FACTURA VALIDA ============
+  console.log('\n── FASE 2A: POST FACTURA VALIDA ──');
+  {
+    const ts2a = Date.now();
+    const numFact2a = `FV-SMOKE-${ts2a}`;
+    const create2a = await raw('POST', '/facturas', { token: ADMIN, body: {
+      fecha: '2026-11-16', numero_factura: numFact2a, proveedor: 'SMOKE PROV',
+      total_con_impuestos: 50000, base_imponible: 42000, iva: 8000, moneda: 'COP',
+      items: [{ descripcion: 'Item prueba', cantidad: 2, precio_unitario: 21000, base_imponible: 42000, iva: 8000, total: 50000 }],
+    } });
+    check('POST /facturas válida → 201', create2a.status === 201, `status=${create2a.status}`);
+    const row2a = psql(`SELECT count(*) FROM facturas WHERE numero_factura='${numFact2a}';`);
+    check('factura persiste en BD', row2a === '1', `count=${row2a}`);
+    psql(`DELETE FROM facturas_items WHERE id_factura IN (SELECT id FROM facturas WHERE numero_factura='${numFact2a}'); DELETE FROM facturas WHERE numero_factura='${numFact2a}';`);
+  }
+
+  // ============ FASE 2B: GET FACTURAS ============
+  console.log('\n── FASE 2B: GET FACTURAS ──');
+  {
+    const ts2b = Date.now();
+    const numFact2b = `FV-SMOKE-${ts2b}`;
+    const create2b = await raw('POST', '/facturas', { token: ADMIN, body: { proveedor: 'SMOKE', numero_factura: numFact2b, total_con_impuestos: 100 } });
+    check('POST /facturas → 201 y captura id', create2b.status === 201, `status=${create2b.status}`);
+    const testFacturaId = create2b.data?.id;
+
+    const list2b = await raw('GET', '/facturas', { token: ADMIN });
+    check('GET /facturas → 200 y tiene {data,total}', list2b.status === 200 && !!list2b.data && typeof list2b.data?.total === 'number', `status=${list2b.status} total=${list2b.data?.total}`);
+
+    const filtered2b = await raw('GET', '/facturas?proveedor=SMOKE', { token: ADMIN });
+    check('GET /facturas?proveedor=SMOKE → 200 y contiene la de prueba', filtered2b.status === 200 && Array.isArray(filtered2b.data?.data) && filtered2b.data.data.some(f => f.id === testFacturaId), `status=${filtered2b.status}`);
+
+    const byId2b = await raw('GET', `/facturas/${testFacturaId}`, { token: ADMIN });
+    check('GET /facturas/:id → 200 factura', byId2b.status === 200 && !!byId2b.data?.id, `status=${byId2b.status}`);
+
+    const items2b = await raw('GET', `/facturas/${testFacturaId}/items`, { token: ADMIN });
+    check('GET /facturas/:id/items → 200', items2b.status === 200, `status=${items2b.status}`);
+
+    psql(`DELETE FROM facturas_items WHERE id_factura=${testFacturaId}; DELETE FROM facturas WHERE id=${testFacturaId};`);
+  }
+
+  // ============ FASE 2C: DEDUP FACTURAS ============
+  console.log('\n── FASE 2C: DEDUP FACTURAS ──');
+  {
+    const ts2c = Date.now();
+    const numFact2c = `FV-DUP-${ts2c}`;
+    const fecha2c = '2026-11-16';
+    const dupBody1 = { numero_factura: numFact2c, fecha: fecha2c, proveedor: 'SMOKE', total_con_impuestos: 100 };
+    const dupBody2 = { numero_factura: numFact2c, fecha: fecha2c, proveedor: 'SMOKE', total_con_impuestos: 200 };
+    const crear2c = await raw('POST', '/facturas', { token: ADMIN, body: dupBody1 });
+    check('POST /facturas → 201 (primera)', crear2c.status === 201, `status=${crear2c.status}`);
+    const dup2c = await raw('POST', '/facturas', { token: ADMIN, body: dupBody2 });
+    check('POST duplicado (mismo numero_factura+fecha) → 409', dup2c.status === 409, `status=${dup2c.status}`);
+    const cnt2c = psql(`SELECT count(*) FROM facturas WHERE numero_factura='${numFact2c}' AND fecha='${fecha2c}';`);
+    check('solo 1 fila duplicada en BD', cnt2c === '1', `count=${cnt2c}`);
+    psql(`DELETE FROM facturas_items WHERE id_factura IN (SELECT id FROM facturas WHERE numero_factura='${numFact2c}'); DELETE FROM facturas WHERE numero_factura='${numFact2c}';`);
+  }
+
+  // ============ FASE 2D: PUT FACTURA ============
+  console.log('\n── FASE 2D: PUT FACTURA ──');
+  {
+    const ts2d = Date.now();
+    const numFact2d = `FV-EDIT-${ts2d}`;
+    const crear2d = await raw('POST', '/facturas', { token: ADMIN, body: { proveedor: 'SMOKE', numero_factura: numFact2d, total_con_impuestos: 100 } });
+    check('POST /facturas → 201 capture id', crear2d.status === 201, `status=${crear2d.status}`);
+    const id2d = crear2d.data?.id;
+    const put2d = await raw('PUT', `/facturas/${id2d}`, { token: ADMIN, body: { concepto: 'editado', total_con_impuestos: 99999 } });
+    check('PUT /facturas/:id → 200', put2d.status === 200, `status=${put2d.status}`);
+    const verif2d = await raw('GET', `/facturas/${id2d}`, { token: ADMIN });
+    check('GET verifica concepto editado y total 99999', verif2d.status === 200 && verif2d.data?.concepto === 'editado' && Number(verif2d.data?.total_con_impuestos) === 99999, `status=${verif2d.status} concepto=${verif2d.data?.concepto}`);
+    psql(`DELETE FROM facturas_items WHERE id_factura=${id2d}; DELETE FROM facturas WHERE id=${id2d};`);
+  }
+
+  // ============ FASE 2E: SOFT-DELETE FACTURA ============
+  console.log('\n── FASE 2E: SOFT-DELETE FACTURA ──');
+  {
+    const ts2e = Date.now();
+    const numFact2e = `FV-SOFT-${ts2e}`;
+    const crear2e = await raw('POST', '/facturas', { token: ADMIN, body: { proveedor: 'SMOKE', numero_factura: numFact2e, total_con_impuestos: 100 } });
+    check('POST /facturas → 201', crear2e.status === 201, `status=${crear2e.status}`);
+    const id2e = crear2e.data?.id;
+    const listPre = await raw('GET', '/facturas', { token: ADMIN });
+    const estaPre = Array.isArray(listPre.data?.data) && listPre.data.data.some(f => f.id === id2e);
+    check('GET /facturas lo incluye antes del delete', estaPre, '');
+    const del2e = await raw('DELETE', `/facturas/${id2e}`, { token: ADMIN });
+    check('DELETE /facturas/:id → 200', del2e.status === 200, `status=${del2e.status}`);
+    const listPost = await raw('GET', '/facturas', { token: ADMIN });
+    const estaPost = Array.isArray(listPost.data?.data) && listPost.data.data.some(f => f.id === id2e);
+    check('GET /facturas ya NO lo incluye tras delete', !estaPost, '');
+    const nd2e = psql(`SELECT count(*) FROM facturas WHERE id=${id2e};`);
+    const deleted2e = psql(`SELECT count(*) FROM facturas WHERE id=${id2e} AND deleted_at IS NOT NULL;`);
+    check('fila física persiste (deleted_at seteado)', deleted2e === '1', `persiste=${nd2e} deleted=${deleted2e}`);
+    psql(`DELETE FROM facturas WHERE id=${id2e};`);
+    psql(`DELETE FROM facturas_items WHERE id_factura=${id2e};`);
+  }
+
+  // ============ FASE 2F: COMPROBANTES (POST+GET+DEDUP) ============
+  console.log('\n── FASE 2F: COMPROBANTES ──');
+  {
+    const ts2f = Date.now();
+    const ref2f = `COMP-SMOKE-${ts2f}`;
+    const crear2f = await raw('POST', '/comprobantes', { token: ADMIN, body: { fecha: '2026-11-16', beneficiario_emisor: 'PROV SMOKE', referencia: ref2f, total_con_impuestos: 25000 } });
+    check('POST /comprobantes → 201', crear2f.status === 201, `status=${crear2f.status}`);
+    const list2f = await raw('GET', '/comprobantes', { token: ADMIN });
+    const incluye2f = Array.isArray(list2f.data?.data) && list2f.data.data.some(c => c.referencia === ref2f);
+    check('GET /comprobantes → 200 e incluye el creado', list2f.status === 200 && incluye2f, `status=${list2f.status} incluye=${incluye2f}`);
+    const dup2f = await raw('POST', '/comprobantes', { token: ADMIN, body: { fecha: '2026-11-16', beneficiario_emisor: 'PROV SMOKE', referencia: ref2f, total_con_impuestos: 25000 } });
+    check('POST duplicado (referencia+total) → 409', dup2f.status === 409, `status=${dup2f.status}`);
+    psql(`DELETE FROM comprobantes_pago WHERE referencia='${ref2f}';`);
+  }
+
+  // ============ FASE 2G: COMPROBANTES (PUT+SOFT-DELETE) ============
+  console.log('\n── FASE 2G: COMPROBANTES PUT+SOFT-DELETE ──');
+  {
+    const ts2g = Date.now();
+    const ref2g = `COMP-EDIT-${ts2g}`;
+    const crear2g = await raw('POST', '/comprobantes', { token: ADMIN, body: { fecha: '2026-11-16', beneficiario_emisor: 'PROV SMOKE', referencia: ref2g, total_con_impuestos: 25000 } });
+    check('POST /comprobantes → 201 capture id', crear2g.status === 201, `status=${crear2g.status}`);
+    const id2g = crear2g.data?.id;
+    const put2g = await raw('PUT', `/comprobantes/${id2g}`, { token: ADMIN, body: { concepto: 'editado' } });
+    check('PUT /comprobantes/:id → 200', put2g.status === 200, `status=${put2g.status}`);
+    const verif2g = await raw('GET', `/comprobantes/${id2g}`, { token: ADMIN });
+    check('GET verifica concepto editado', verif2g.status === 200 && verif2g.data?.concepto === 'editado', `status=${verif2g.status}`);
+    const del2g = await raw('DELETE', `/comprobantes/${id2g}`, { token: ADMIN });
+    check('DELETE /comprobantes/:id → 200', del2g.status === 200, `status=${del2g.status}`);
+    const list2g = await raw('GET', '/comprobantes', { token: ADMIN });
+    const esta2g = Array.isArray(list2g.data?.data) && list2g.data.data.some(c => c.id === id2g);
+    check('GET /comprobantes ya NO lo incluye tras delete', !esta2g, '');
+    const nd2g = psql(`SELECT count(*) FROM comprobantes_pago WHERE id=${id2g};`);
+    const deleted2g = psql(`SELECT count(*) FROM comprobantes_pago WHERE id=${id2g} AND deleted_at IS NOT NULL;`);
+    check('fila física persiste (deleted_at seteado)', deleted2g === '1', `persiste=${nd2g} deleted=${deleted2g}`);
+    psql(`DELETE FROM comprobantes_pago WHERE id=${id2g};`);
+  }
+
   // ============ RESUMEN ============
   limpiarUsuarios();
   console.log(`\n${'─'.repeat(54)}`);
