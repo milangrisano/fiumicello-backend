@@ -36,7 +36,7 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
     }),
   );
   const port = parseInt(process.env.PORT || '3000', 10);

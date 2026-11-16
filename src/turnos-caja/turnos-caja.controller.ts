@@ -6,6 +6,12 @@ import { PERMISSIONS } from '../auth/permissions';
 import { TurnosCajaService } from './turnos-caja.service';
 import { MovimientosCajaService } from './movimientos-caja.service';
 import { PagosPropinaService } from './pagos-propina.service';
+import {
+  AbrirTurnoDto,
+  CerrarTurnoDto,
+  MovimientoCajaDto,
+  PagarPropinaDto,
+} from './dto/turnos-caja.dto';
 
 @Controller('caja')
 @UseGuards(AuthGuard('jwt'))
@@ -26,8 +32,8 @@ export class TurnosCajaController {
   /** Abrir caja con efectivo inicial. */
   @Post('abrir')
   @RequirePermiso(PERMISSIONS.caja_abrir)
-  async abrir(@CurrentUser() u: { id: number }, @Body() body: { efectivo_inicial: number }) {
-    return this.turnos.abrir(u.id, Number(body.efectivo_inicial ?? 0));
+  async abrir(@CurrentUser() u: { id: number }, @Body() body: AbrirTurnoDto) {
+    return this.turnos.abrir(u.id, body.efectivo_inicial);
   }
 
   /** Arqueo del turno. */
@@ -42,9 +48,9 @@ export class TurnosCajaController {
   @RequirePermiso(PERMISSIONS.caja_cerrar)
   async cerrar(
     @Param('id') id: string,
-    @Body() body: { efectivo_final: number; propina_efectivo: number; propina_otros: number },
+    @Body() body: CerrarTurnoDto,
   ) {
-    return this.turnos.cerrar(Number(id), Number(body.efectivo_final), Number(body.propina_efectivo ?? 0), Number(body.propina_otros ?? 0));
+    return this.turnos.cerrar(Number(id), body.efectivo_final, body.propina_efectivo ?? 0, body.propina_otros ?? 0);
   }
 
   @Get('turnos')
@@ -56,17 +62,17 @@ export class TurnosCajaController {
   // --- Movimientos ---
   @Post('movimiento/egreso')
   @RequirePermiso(PERMISSIONS.caja_movimientos)
-  async egreso(@CurrentUser() u: { id: number }, @Body() b: { id_turno: number; concepto: string; monto: number }) {
-    return this.movs.egreso(Number(b.id_turno), b.concepto, Number(b.monto), u.id);
+  async egreso(@CurrentUser() u: { id: number }, @Body() b: MovimientoCajaDto) {
+    return this.movs.egreso(b.id_turno, b.concepto, b.monto, u.id);
   }
 
   @Post('movimiento/ingreso')
   @RequirePermiso(PERMISSIONS.caja_movimientos)
   async ingreso(
     @CurrentUser() u: { id: number },
-    @Body() b: { id_turno: number; concepto: string; monto: number; autorizado_por: number },
+    @Body() b: MovimientoCajaDto,
   ) {
-    return this.movs.ingreso(Number(b.id_turno), b.concepto, Number(b.monto), Number(b.autorizado_por), u.id);
+    return this.movs.ingreso(b.id_turno, b.concepto, b.monto, b.autorizado_por ?? 0, u.id);
   }
 
   @Get('movimiento/:id_turno')
@@ -78,11 +84,11 @@ export class TurnosCajaController {
   // --- Pagos de propina ---
   @Post('propina/pago')
   @RequirePermiso(PERMISSIONS.propina_pagar)
-  async pagarPropina(@CurrentUser() u: { id: number }, @Body() b: { fecha_pago: string; monto_efectivo: number; monto_otros: number; turnos_desde?: number; turnos_hasta?: number; notas?: string }) {
+  async pagarPropina(@CurrentUser() u: { id: number }, @Body() b: PagarPropinaDto) {
     return this.pagosPropina.registrar({
       fecha_pago: b.fecha_pago,
-      monto_efectivo: Number(b.monto_efectivo ?? 0),
-      monto_otros: Number(b.monto_otros ?? 0),
+      monto_efectivo: b.monto_efectivo,
+      monto_otros: b.monto_otros,
       turnos_desde: b.turnos_desde ?? null,
       turnos_hasta: b.turnos_hasta ?? null,
       quien_registra: u.id,
