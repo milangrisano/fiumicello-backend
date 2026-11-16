@@ -13,7 +13,12 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { VentasService, CreateVentaInput } from './ventas.service';
+import { VentasService } from './ventas.service';
+import {
+  CreateVentaDto,
+  CrearFormaPagoDto,
+  ActualizarFormaPagoDto,
+} from './dto/ventas.dto';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { SUPERADMIN_ROLE } from '../auth/permissions';
@@ -34,15 +39,15 @@ export class VentasController {
   @Post('formas-pago')
   @RequirePermiso(PERMISSIONS.ventas_crear)
   @HttpCode(HttpStatus.CREATED)
-  crearFormaPago(@Body() b: { nombre?: string }) {
-    return this.ventas.crearFormaPago(b.nombre || '');
+  crearFormaPago(@Body() b: CrearFormaPagoDto) {
+    return this.ventas.crearFormaPago(b.nombre);
   }
 
   @Put('formas-pago/:id')
   @RequirePermiso(PERMISSIONS.ventas_crear)
   actualizarFormaPago(
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: { nombre?: string; activo?: boolean },
+    @Body() b: ActualizarFormaPagoDto,
   ) {
     return this.ventas.actualizarFormaPago(id, b.nombre || '', b.activo);
   }
@@ -58,7 +63,7 @@ export class VentasController {
   @Post()
   @RequirePermiso(PERMISSIONS.ventas_crear)
   @HttpCode(HttpStatus.CREATED)
-  crear(@Body() body: CreateVentaInput, @CurrentUser() user: JwtUser) {
+  crear(@Body() body: CreateVentaDto, @CurrentUser() user: JwtUser) {
     return this.ventas.crear(body, user?.id || 0);
   }
 
@@ -91,7 +96,6 @@ export class VentasController {
   anular(@Param('id', ParseIntPipe) id: number, @Body() body: { motivo?: string | null }) {
     return this.ventas.anular(id, body?.motivo);
   }
-
   // Borrado físico: SOLO superadmin (no usa @RequirePermiso, validamos rol).
   @Delete(':id')
   eliminar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtUser) {
