@@ -29,6 +29,13 @@ export class RolesController {
     return this.permisosSvc.catalogo();
   }
 
+  /** Catálogo jerárquico (árbol de 3 niveles) para la GUI de roles. */
+  @Get('catalogo-arbol')
+  @RequirePermiso(PERMISSIONS.roles_gestionar)
+  catalogoArbol() {
+    return this.permisosSvc.catalogoJerarquico();
+  }
+
   @Get()
   @RequirePermiso(PERMISSIONS.roles_gestionar)
   listar() {

@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Rol } from '../entities/rol.entity';
-import { PERMISSION_DEFS, PERMISSIONS, SUPERADMIN_ROLE } from './permissions';
+import {
+  CATALOGO_JERARQUICO,
+  PERMISSION_DEFS,
+  PERMISSIONS,
+  SUPERADMIN_ROLE,
+  BotonPermisos,
+} from './permissions';
 
 /**
  * Resolves which permissions a user has based on their role.
@@ -39,7 +45,14 @@ export class RolesPermisosService {
     return perms.includes(permiso);
   }
 
-  /** Ordered catalog the admin screen uses to build its checkboxes. */
+  /** Catálogo jerárquico de 3 niveles que la GUI de roles renderiza como un
+   *  árbol expandible (Botón → Pestaña → CRUD por servicio). */
+  catalogoJerarquico(): BotonPermisos[] {
+    return CATALOGO_JERARQUICO;
+  }
+
+  /** Ordered flat catalog the admin screen uses to build its checkboxes
+   *  (legacy). */
   catalogo(): typeof PERMISSION_DEFS {
     return PERMISSION_DEFS;
   }
