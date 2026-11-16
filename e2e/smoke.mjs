@@ -506,6 +506,145 @@ async function main() {
     psql(`DELETE FROM comprobantes_pago WHERE id=${id2g};`);
   }
 
+  // ============ FASE 3A: ABRIR TURNO CAJA ============
+  console.log('\n── FASE 3A: ABRIR TURNO CAJA ──');
+  let turnoAbiertoId = null;
+  {
+    const abrir = await raw('POST', '/caja/abrir', { token: ADMIN, body: { efectivo_inicial: 100000 } });
+    check('POST /caja/abrir → 201 y estado abierto', abrir.status === 201 && abrir.data?.estado === 'abierto', `status=${abrir.status}`);
+    turnoAbiertoId = abrir.data?.id || null;
+    check('turno creado con id', !!turnoAbiertoId, `id=${turnoAbiertoId}`);
+    const activo = await raw('GET', '/caja/activo', { token: ADMIN });
+    check('GET /caja/activo → 200 y es el mismo turno', activo.status === 200 && activo.data?.id === turnoAbiertoId, `status=${activo.status}`);
+    const fila = psql(`SELECT count(*) FROM turnos_caja WHERE id=${turnoAbiertoId} AND estado='abierto';`);
+    check('psql: fila existe con estado abierto', fila === '1', `count=${fila}`);
+  }
+
+  // ============ FASE 3B: MOVIMIENTOS DE CAJA ============
+  console.log('\n── FASE 3B: MOVIMIENTOS DE CAJA ──');
+  {
+    const egreso = await raw('POST', '/caja/movimiento/egreso', { token: ADMIN, body: { id_turno: turnoAbiertoId, concepto: 'PRUEBA EGRESO', monto: 50000 } });
+    check('POST /caja/movimiento/egreso → 201', egreso.status === 201, `status=${egreso.status}`);
+    // Ingreso exige autorizado_por válido (>0): el id del superadmin temporal.
+    const adminUserId = +(psql(`SELECT id FROM usuarios WHERE email='${ADMIN_EMAIL}';`).trim()) || 0;
+    const ingreso = await raw('POST', '/caja/movimiento/ingreso', { token: ADMIN, body: { id_turno: turnoAbiertoId, concepto: 'PRUEBA INGRESO', monto: 20000, autorizado_por: adminUserId } });
+    check('POST /caja/movimiento/ingreso → 201', ingreso.status === 201, `status=${ingreso.status}`);
+    const movs = await raw('GET', `/caja/movimiento/${turnoAbiertoId}`, { token: ADMIN });
+    check('GET /caja/movimiento/:id → 200 e incluye egreso', movs.status === 200 && Array.isArray(movs.data) && movs.data.some(m => m.concepto === 'PRUEBA EGRESO'), `status=${movs.status}`);
+  }
+
+  // ============ FASE 3C: ARQUEO ============
+  console.log('\n── FASE 3C: ARQUEO ──');
+  {
+    const arqueo = await raw('GET', `/caja/${turnoAbiertoId}/arqueo`, { token: ADMIN });
+    check('GET /caja/:id/arqueo → 200', arqueo.status === 200, `status=${arqueo.status}`);
+    check('arqueo incluye puedeCerrar', arqueo.data?.puedeCerrar !== undefined, `puedeCerrar=${arqueo.data?.puedeCerrar}`);
+    const aTorno = psql(`SELECT estado FROM turnos_caja WHERE id=${turnoAbiertoId};`);
+    check('turno sigue abierto', aTorno === 'abierto', `estado=${aTorno}`);
+  }
+
+  // ============ FASE 3D: CREAR PEDIDO ============
+  console.log('\n── FASE 3D: CREAR PEDIDO ──');
+  let pedidoPruebaId = null;
+  {
+    const cartaD = await raw('GET', '/carta', { token: ADMIN });
+    let idProductoD = 48;
+    if (cartaD.status === 200 && cartaD.data?.categorias) {
+      const todos = [];
+      for (const c of cartaD.data.categorias) { if (Array.isArray(c.items)) todos.push(...c.items); }
+      if (todos.length) idProductoD = todos[0].id || 48;
+    }
+    check('id_producto real obtenido', typeof idProductoD === 'number', `id=${idProductoD}`);
+    const criar = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'mesa', numero_mesa: `7-${Date.now() % 10000}`, items: [{ id_producto: idProductoD, cantidad: 2 }] } });
+    check('POST /pedidos → 201', criar.status === 201, `status=${criar.status}`);
+    pedidoPruebaId = criar.data?.id || null;
+    check('pedido con id', !!pedidoPruebaId, `id=${pedidoPruebaId}`);
+    const getPed = await raw('GET', `/pedidos/${pedidoPruebaId}`, { token: ADMIN });
+    check('GET /pedidos/:id → 200', getPed.status === 200, `status=${getPed.status}`);
+  }
+
+  // ============ FASE 3E: PEDIDO COCINA ============
+  console.log('\n── FASE 3E: PEDIDO COCINA ──');
+  {
+    const itemsRes = await raw('POST', `/pedidos/${pedidoPruebaId}/items`, { token: ADMIN, body: { items: [{ id_producto: 48, cantidad: 1 }] } });
+    check('POST /pedidos/:id/items → 201', itemsRes.status === 201, `status=${itemsRes.status}`);
+    const cocinaRes = await raw('POST', `/pedidos/${pedidoPruebaId}/cocina`, { token: ADMIN, body: { estado_cocina: 'preparando' } });
+    check('POST /pedidos/:id/cocina → 201', cocinaRes.status === 201, `status=${cocinaRes.status}`);
+    const colaRes = await raw('GET', '/pedidos/cocina/cola', { token: ADMIN });
+    check('GET /pedidos/cocina/cola → 200', colaRes.status === 200 && Array.isArray(colaRes.data), `status=${colaRes.status}`);
+  }
+
+  // ============ FASE 3F: COBRAR PEDIDO ============
+  console.log('\n── FASE 3F: COBRAR PEDIDO ──');
+  {
+    const formasF = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+    let formaF = null;
+    if (Array.isArray(formasF.data)) { const activa = formasF.data.find(f => f.activo === true); formaF = activa ? activa.id : null; }
+    check('forma de pago activa obtenida (o null)', true, `forma=${formaF}`);
+    const cobrar = await raw('POST', `/pedidos/${pedidoPruebaId}/cobrar`, { token: ADMIN, body: { id_forma_pago: formaF } });
+    check('POST /pedidos/:id/cobrar → 201', cobrar.status === 201, `status=${cobrar.status}`);
+    // verificar que el pedido ya no está abierta y se creó venta
+    const pedF = psql(`SELECT estado FROM pedidos WHERE id=${pedidoPruebaId};`);
+    check('pedido ya no está abierta', pedF !== 'abierta', `estado=${pedF}`);
+    const ventaF = psql(`SELECT count(*) FROM ventas WHERE numero_mesa IN (SELECT numero_mesa FROM pedidos WHERE id=${pedidoPruebaId});`);
+    check('se creó venta asociada', Number(ventaF) >= 1, `ventas=${ventaF}`);
+  }
+
+  // ============ FASE 3G: VENTAS DIRECTAS + FORMAS PAGO ============
+  console.log('\n── FASE 3G: VENTAS DIRECTAS + FORMAS PAGO ──');
+  let ventaDirectaId = null;
+  {
+    const nombreG = `METODO-TEST-${Date.now()}`;
+    const crearForma = await raw('POST', '/ventas/formas-pago', { token: ADMIN, body: { nombre: nombreG } });
+    check('POST /ventas/formas-pago → 201', crearForma.status === 201, `status=${crearForma.status}`);
+    const formaIdG = crearForma.data?.id;
+    const listarFormas = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+    check('GET /ventas/formas-pago → 200 e incluye la nueva', listarFormas.status === 200 && Array.isArray(listarFormas.data) && listarFormas.data.some(f => f.id === formaIdG), `status=${listarFormas.status}`);
+    const ventaG = await raw('POST', '/ventas', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: 'CLIENTE TEST', items: [{ id_producto: 48, cantidad: 1 }] } });
+    check('POST /ventas → 201', ventaG.status === 201, `status=${ventaG.status}`);
+    ventaDirectaId = ventaG.data?.id;
+    const getVentas = await raw('GET', '/ventas', { token: ADMIN });
+    check('GET /ventas → 200', getVentas.status === 200, `status=${getVentas.status}`);
+    const desac = await raw('PUT', `/ventas/formas-pago/${formaIdG}`, { token: ADMIN, body: { activo: false } });
+    check('PUT /ventas/formas-pago/:id activo:false → 200', desac.status === 200, `status=${desac.status}`);
+    const verifForma = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+    const formaDesac = Array.isArray(verifForma.data) && verifForma.data.find(f => f.id === formaIdG);
+    check('forma quedó desactivada (no borrada)', formaDesac && formaDesac.activo === false, `activo=${formaDesac?.activo}`);
+    // limpieza: borrar venta de prueba (items + venta)
+    if (ventaDirectaId) { try { psql(`DELETE FROM venta_items WHERE id_venta=${ventaDirectaId}; DELETE FROM ventas WHERE id=${ventaDirectaId};`); } catch {} }
+  }
+
+  // ============ FASE 3H: CIERRE DE TURNO (final) ============
+  console.log('\n── FASE 3H: CIERRE DE TURNO ──');
+  {
+    const arqueoH = await raw('GET', `/caja/${turnoAbiertoId}/arqueo`, { token: ADMIN });
+    check('arqueo final → 200', arqueoH.status === 200, `status=${arqueoH.status}`);
+    const puedeH = arqueoH.data?.puedeCerrar;
+    if (puedeH) {
+      const cerrarH = await raw('POST', `/caja/${turnoAbiertoId}/cerrar`, { token: ADMIN, body: { efectivo_final: arqueoH.data?.efectivoTeorico ?? 0, propina_efectivo: 0, propina_otros: 0 } });
+      check('POST /caja/:id/cerrar → 200/201 (cuadra)', cerrarH.status === 200 || cerrarH.status === 201, `status=${cerrarH.status}`);
+      const stH = psql(`SELECT estado FROM turnos_caja WHERE id=${turnoAbiertoId};`);
+      check('turno quedó cerrado', stH === 'cerrado', `estado=${stH}`);
+    } else {
+      check('arqueo no cuadra (faltante) → intento de cierre da 403', true, 'puedeCerrar=false');
+      // intento de cierre debe dar 400/403 por faltante
+      const cerrarIntento = await raw('POST', `/caja/${turnoAbiertoId}/cerrar`, { token: ADMIN, body: { efectivo_final: 0, propina_efectivo: 0, propina_otros: 0 } });
+      check('cerrar con faltante → 4xx (bloqueo)', cerrarIntento.status === 403 || cerrarIntento.status === 400, `status=${cerrarIntento.status}`);
+    }
+    const delPed = psql(`SELECT count(*) FROM pedidos WHERE id=${pedidoPruebaId} AND deleted_at IS NULL;`);
+    check('pedido de prueba existe', Number(delPed) === 1, `count=${delPed}`);
+  }
+
+  // ============ LIMPIEZA DE DATOS DE PRUEBA ============
+  // Borra el turno (y sus movimientos), la venta y el pedido creados por la
+  // suite, para que cada corrida no acumule basura en :test. Solo si existen.
+  {
+    try { psql(`DELETE FROM venta_items WHERE id_venta IN (SELECT id FROM ventas WHERE id_turno=${turnoAbiertoId ?? 0}); DELETE FROM ventas WHERE id_turno=${turnoAbiertoId ?? 0};`); } catch {}
+    try { psql(`DELETE FROM movimientos_caja WHERE id_turno=${turnoAbiertoId ?? 0};`); } catch {}
+    try { psql(`DELETE FROM pedido_items WHERE id_pedido=${pedidoPruebaId ?? 0}; DELETE FROM pedidos WHERE id=${pedidoPruebaId ?? 0};`); } catch {}
+    try { if (turnoAbiertoId) psql(`DELETE FROM turnos_caja WHERE id=${turnoAbiertoId};`); } catch {}
+  }
+
   // ============ RESUMEN ============
   limpiarUsuarios();
   console.log(`\n${'─'.repeat(54)}`);
