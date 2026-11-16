@@ -635,6 +635,100 @@ async function main() {
     check('pedido de prueba existe', Number(delPed) === 1, `count=${delPed}`);
   }
 
+  // ============ FASE 4A: RESÚMENES CONTABLE ============
+  console.log('\n── FASE 4A: RESÚMENES CONTABLE ──');
+  {
+    const rc = await raw('GET', '/resumenes/contable?mes=2026-10', { token: ADMIN });
+    check('GET /resumenes/contable → 200 y utilidad numérica', rc.status === 200 && typeof rc.data?.utilidad === 'number', `status=${rc.status} utilidad=${rc.data?.utilidad}`);
+    const ruf = await raw('GET', '/resumenes/ultima-fecha', { token: ADMIN });
+    check('GET /resumenes/ultima-fecha → 200', ruf.status === 200, `status=${ruf.status}`);
+  }
+
+  // ============ FASE 4B: LISTADO RESUMEN ============
+  console.log('\n── FASE 4B: LISTADO RESUMEN ──');
+  {
+    const rl = await raw('GET', '/resumenes?mes=2026-10', { token: ADMIN });
+    check('GET /resumenes?mes=2026-10 → 200 y totales presente', rl.status === 200 && (rl.data?.totales !== undefined), `status=${rl.status}`);
+    const rv = await raw('GET', '/resumenes?mes=1999-01', { token: ADMIN });
+    check('GET /resumenes?mes=1999-01 → 200 (mes sin datos, no 5xx)', rv.status === 200, `status=${rv.status}`);
+  }
+
+  // ============ FASE 4C: GASTOS ============
+  console.log('\n── FASE 4C: GASTOS ──');
+  {
+    const gr = await raw('GET', '/gastos/resumen?mes=2026-10', { token: ADMIN });
+    check('GET /gastos/resumen → 200 y totalGeneral presente', gr.status === 200 && gr.data?.totalGeneral !== undefined, `status=${gr.status}`);
+    const gp = await raw('GET', '/gastos/por-categoria?mes=2026-10', { token: ADMIN });
+    check('GET /gastos/por-categoria → 200 y es array', gp.status === 200 && Array.isArray(gp.data), `status=${gp.status}`);
+    const gt = await raw('GET', '/gastos/total?mes=2026-10', { token: ADMIN });
+    check('GET /gastos/total → 200 y total numérico', gt.status === 200 && typeof gt.data?.total === 'number', `status=${gt.status}`);
+  }
+
+  // ============ FASE 4D: ROLES CATÁLOGO ============
+  console.log('\n── FASE 4D: ROLES CATÁLOGO ──');
+  {
+    const arb = await raw('GET', '/auth/roles/catalogo-arbol', { token: ADMIN });
+    const nonEmpty = Array.isArray(arb.data) ? arb.data.length > 0 : (arb.data && Object.keys(arb.data).length > 0);
+    check('GET /auth/roles/catalogo-arbol → 200 y no vacío', arb.status === 200 && !!nonEmpty, `status=${arb.status}`);
+    const cat = await raw('GET', '/auth/roles/catalogo', { token: ADMIN });
+    check('GET /auth/roles/catalogo → 200', cat.status === 200, `status=${cat.status}`);
+    const rol = await raw('GET', '/auth/roles', { token: ADMIN });
+    check('GET /auth/roles → 200 lista no vacía', rol.status === 200 && Array.isArray(rol.data) && rol.data.length > 0, `status=${rol.status} n=${Array.isArray(rol.data) ? rol.data.length : '-'}`);
+  }
+
+  // ============ FASE 4E: ROLES CRUD ============
+  console.log('\n── FASE 4E: ROLES CRUD ──');
+  let rolSmokeNombre = null;
+  {
+    rolSmokeNombre = 'rol_smoke_' + Date.now();
+    const crear = await raw('POST', '/auth/roles', { token: ADMIN, body: { nombre: rolSmokeNombre, descripcion: 'rol de prueba', permisos: [] } });
+    check('POST /auth/roles → 201 crea rol', crear.status === 201, `status=${crear.status}`);
+    const listaR = await raw('GET', '/auth/roles', { token: ADMIN });
+    check('GET /auth/roles → 200 y rol nuevo aparece', listaR.status === 200 && Array.isArray(listaR.data) && listaR.data.some(r => r.nombre === rolSmokeNombre), `status=${listaR.status}`);
+    const upd = await raw('PUT', `/auth/roles/${rolSmokeNombre}`, { token: ADMIN, body: { descripcion: 'rol actualizado', permisos: [] } });
+    check('PUT /auth/roles/:nombre → 200/201 actualiza', upd.status === 200 || upd.status === 201, `status=${upd.status}`);
+    const dup = await raw('POST', '/auth/roles', { token: ADMIN, body: { nombre: rolSmokeNombre, permisos: [] } });
+    check('POST /auth/roles duplicado → 400/409', dup.status === 400 || dup.status === 409, `status=${dup.status}`);
+    const delR = await raw('DELETE', `/auth/roles/${rolSmokeNombre}`, { token: ADMIN });
+    check('DELETE /auth/roles/:nombre → 200 limpia', delR.status === 200, `status=${delR.status}`);
+    if (delR.status !== 200) { try { psql(`DELETE FROM roles WHERE nombre='${rolSmokeNombre}';`); } catch {} }
+  }
+
+  // ============ FASE 4F: CARTA ADMIN ============
+  console.log('\n── FASE 4F: CARTA ADMIN ──');
+  let catSmokeId = null;
+  {
+    const catBody = { nombre: 'CAT-SMOKE-' + Date.now(), orden: 0 };
+    const crearCat = await raw('POST', '/carta/categorias', { token: ADMIN, body: catBody });
+    check('POST /carta/categorias → 201', crearCat.status === 201, `status=${crearCat.status}`);
+    catSmokeId = crearCat.data?.id;
+    check('categoría creada con id', !!catSmokeId, `id=${catSmokeId}`);
+    const itemBody = { id_categoria: catSmokeId, nombre: 'ITEM-SMOKE', precio: 1000 };
+    const crearItem = await raw('POST', '/carta/items', { token: ADMIN, body: itemBody });
+    check('POST /carta/items → 201', crearItem.status === 201, `status=${crearItem.status}`);
+    const getCar = await raw('GET', '/carta', { token: ADMIN });
+    const catAparece = getCar.status === 200 && getCar.data?.categorias?.some(c => c.id === catSmokeId);
+    check('GET /carta → 200 y categoría nueva aparece', !!catAparece, `status=${getCar.status}`);
+    const cc = psql(`SELECT count(*) FROM carta_categorias WHERE id=${catSmokeId};`);
+    check('categoría persiste en BD', cc === '1', `count=${cc}`);
+    const ic = psql(`SELECT count(*) FROM carta_items WHERE id_categoria=${catSmokeId};`);
+    check('item persiste en BD', Number(ic) >= 1, `count=${ic}`);
+  }
+
+  // ============ FASE 4G: ASIGNACIÓN/CLASIFICACIÓN RESUMEN ============
+  console.log('\n── FASE 4G: RESÚMENES ASIG/CLASIF ──');
+  // Nota: estos endpoints usan @Body('campo') inline (no DTO de clase) y
+  // devuelven HTTP 200 con {ok:false, mensaje} cuando el dato no existe
+  // (patrón soft-response), no lanzan 404. ADVERTENCIA: NO usar body vacío
+  // (findOneBy({id:undefined}) de TypeORM toma el PRIMER registro y cruza datos
+  // reales) → usar ids inexistentes para el chequeo seguro.
+  {
+    const asi = await raw('PATCH', '/resumenes/asignar-comprobante', { token: ADMIN, body: { facturaId: 999999999, comprobanteId: 999999999 } });
+    check('PATCH asignar-comprobante con ids inexistentes → 200 con ok:false', asi.status === 200 && asi.data?.ok === false, `status=${asi.status} ok=${asi.data?.ok}`);
+    const cla = await raw('PATCH', '/resumenes/clasificar-comprobante', { token: ADMIN, body: { comprobanteId: 999999999, tipo: 'transferencia' } });
+    check('PATCH clasificar-comprobante con id inexistente → 200 con ok:false', cla.status === 200 && cla.data?.ok === false, `status=${cla.status} ok=${cla.data?.ok}`);
+  }
+
   // ============ LIMPIEZA DE DATOS DE PRUEBA ============
   // Borra el turno (y sus movimientos), la venta y el pedido creados por la
   // suite, para que cada corrida no acumule basura en :test. Solo si existen.
@@ -643,6 +737,11 @@ async function main() {
     try { psql(`DELETE FROM movimientos_caja WHERE id_turno=${turnoAbiertoId ?? 0};`); } catch {}
     try { psql(`DELETE FROM pedido_items WHERE id_pedido=${pedidoPruebaId ?? 0}; DELETE FROM pedidos WHERE id=${pedidoPruebaId ?? 0};`); } catch {}
     try { if (turnoAbiertoId) psql(`DELETE FROM turnos_caja WHERE id=${turnoAbiertoId};`); } catch {}
+    // Limpiar categoría (e items) de carta creada por la Fase 4F
+    try { if (catSmokeId) psql(`DELETE FROM carta_items WHERE id_categoria=${catSmokeId}; DELETE FROM carta_categorias WHERE id=${catSmokeId};`); } catch {}
+    // El DELETE de roles hace soft-delete (marca deleted_at, la fila persiste).
+    // Eliminar físicamente el rol de la Fase 4E para no acumular filas en :test.
+    try { if (rolSmokeNombre) psql(`DELETE FROM roles WHERE nombre='${rolSmokeNombre}';`); } catch {}
   }
 
   // ============ RESUMEN ============
