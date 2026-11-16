@@ -103,19 +103,22 @@ async function bootstrap() {
       return !!(svc && svc.estado === 'aprobado');
     };
     // Middleware ANTES de montar el Swagger: protege /api/docs y TODOS sus
-    // sub-recursos (UI, assets, /api/docs-json del spec) con regex.
-    app.use(/^\/api\/docs/, async (req: Request, res: Response, next: () => void) => {
-      try {
-        if (await puedeVer(req)) {
-          if (!cookieOk(req)) {
-            res.setHeader('Set-Cookie', firmarCookie());
+    // sub-recursos (UI, assets, /api/docs-json, /api/docs-yaml del spec).
+    app.use((req: Request, _res: Response, next: () => void) => {
+      if (!req.path.startsWith('/api/docs')) return next();
+      void (async () => {
+        try {
+          if (await puedeVer(req)) {
+            if (!cookieOk(req)) {
+              _res.setHeader('Set-Cookie', firmarCookie());
+            }
+            return next();
           }
-          return next();
+        } catch {
+          /* cae al 401 */
         }
-      } catch {
-        /* cae al 401 */
-      }
-      res.status(401).send('Swagger protegido: manda ?token=JWT o Authorization: Bearer.');
+        _res.status(401).send('Swagger protegido: manda ?token=JWT o Authorization: Bearer.');
+      })();
     });
     const config = new DocumentBuilder()
       .setTitle('Fiumicello API')
