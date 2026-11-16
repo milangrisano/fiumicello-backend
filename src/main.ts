@@ -102,24 +102,9 @@ async function bootstrap() {
       const svc = await authSvc.findByApiToken(token);
       return !!(svc && svc.estado === 'aprobado');
     };
-    const config = new DocumentBuilder()
-      .setTitle('Fiumicello API')
-      .setDescription('Backend del restaurante La Vera Trattoria — facturación, POS, caja, carta, contabilidad.')
-      .setVersion(require('./app-version').APP_VERSION)
-      .addBearerAuth(
-        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Pega el access_token (login)' },
-        'access-token',
-      )
-      .build();
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-        docExpansion: 'none',
-      },
-    });
-    // Middleware de protección sobre /api/docs y sus assets.
-    app.use('/docs', async (req: Request, res: Response, next: () => void) => {
+    // Middleware ANTES de montar el Swagger: protege /api/docs y TODOS sus
+    // sub-recursos (UI, assets, /api/docs-json del spec) con regex.
+    app.use(/^\/api\/docs/, async (req: Request, res: Response, next: () => void) => {
       try {
         if (await puedeVer(req)) {
           if (!cookieOk(req)) {
@@ -131,6 +116,22 @@ async function bootstrap() {
         /* cae al 401 */
       }
       res.status(401).send('Swagger protegido: manda ?token=JWT o Authorization: Bearer.');
+    });
+    const config = new DocumentBuilder()
+      .setTitle('Fiumicello API')
+      .setDescription('Backend del restaurante La Vera Trattoria — facturación, POS, caja, carta, contabilidad.')
+      .setVersion(require('./app-version').APP_VERSION)
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Pega el access_token (login)' },
+        'access-token',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+        docExpansion: 'none',
+      },
     });
     console.log(`📚 Swagger UI: http://0.0.0.0:${port}/api/docs (protegido)`);
   }
