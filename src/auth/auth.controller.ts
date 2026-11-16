@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -201,7 +202,24 @@ export class AuthController {
     return { ok: true, id };
   }
 
-  // ---- Admin: assign a role to a user ----
+  // ---- Admin: desactivar/reactivar acceso de un usuario humano ----
+  @Post('usuarios/:id/estado')
+  @Roles('superadmin', 'admin')
+  @RequirePermiso(PERMISSIONS.usuarios_gestionar)
+  @HttpCode(HttpStatus.OK)
+  async cambiarEstado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { estado?: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    const estado = (body.estado || '').trim();
+    if (estado !== 'aprobado' && estado !== 'desactivado') {
+      throw new BadRequestException('Estado inválido (aprobado | desactivado).');
+    }
+    await this.auth.cambiarEstadoUsuario(id, estado as 'aprobado' | 'desactivado', user.id);
+    return { ok: true, id, estado };
+  }
+
   @Post('usuarios/:id/rol')
   @Roles('superadmin', 'admin')
   @RequirePermiso(PERMISSIONS.usuarios_gestionar)

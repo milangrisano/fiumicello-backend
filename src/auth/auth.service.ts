@@ -447,6 +447,35 @@ export class AuthService {
    * - Admin cannot manage superadmin users, and cannot assign the superadmin role.
    * - Only superadmin can assign the superadmin role.
    */
+  /** Desactivar o reactivar el acceso de un usuario humano.
+   *  - `desactivado` => el login lo rechaza (línea 272) y pierde acceso.
+   *  - `aprobado`    => recupera acceso.
+   *  No puede desactivarse a uno mismo (evita que un admin se deje afuera). */
+  async cambiarEstadoUsuario(
+    id: number,
+    nuevoEstado: 'aprobado' | 'desactivado',
+    actorId: number,
+  ): Promise<void> {
+    if (id === actorId) {
+      throw new BadRequestException('No puedes desactivar tu propia cuenta.');
+    }
+    const user = await this.usuarios.findOneBy({ id });
+    if (!user) throw new BadRequestException('Usuario no encontrado.');
+    if (!user.email) {
+      throw new BadRequestException('Solo se desactivan cuentas de usuario humano.');
+    }
+    user.estado = nuevoEstado;
+    await this.usuarios.save(user);
+    if (user.email) {
+      await this.email.sendAccountStatus(
+        user.email,
+        nuevoEstado === 'desactivado'
+          ? 'Tu cuenta fue desactivada. Ya no puedes iniciar sesión.'
+          : 'Tu cuenta fue reactivada. Ya puedes iniciar sesión.',
+      );
+    }
+  }
+
   async asignarRol(id: number, nuevoRol: string, actorRol: string): Promise<void> {
     const user = await this.usuarios.findOneBy({ id });
     if (!user) throw new BadRequestException('Usuario no encontrado.');
