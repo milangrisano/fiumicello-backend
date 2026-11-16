@@ -25,6 +25,17 @@ import { RolesPermisosService } from './roles-permisos.service';
 import { CurrentUser, JwtUser } from './current-user.decorator';
 import { RequirePermiso } from './permiso.decorator';
 import { PERMISSIONS, SUPERADMIN_ROLE } from './permissions';
+import {
+  EmailDto,
+  VerifyDto,
+  VerifyCodeDto,
+  LoginDto,
+  ResetPasswordDto,
+  CambiarContrasenaDto,
+  EstadoUsuarioDto,
+  AsignarRolDto,
+  GenerarServicioDto,
+} from './dto/auth.dto';
 
 /** Lee el valor de una cookie desde el header 'Cookie' (sin cookie-parser). */
 function cookieValue(req: Request, name: string): string {
@@ -107,7 +118,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   // Anti spam de códigos: máximo 5 solicitudes de registro por minuto.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async register(@Body() body: { email?: string }) {
+  async register(@Body() body: EmailDto) {
     return this.auth.requestRegister(body.email || '');
   }
 
@@ -118,7 +129,7 @@ export class AuthController {
   // Anti fuerza bruta de código/de contraseña: máximo 5 intentos por minuto.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async verify(
-    @Body() body: { email?: string; code?: string; password?: string },
+    @Body() body: VerifyDto,
   ) {
     await this.auth.verifyAndCreate(body.email || '', body.code || '', body.password || '');
     return { ok: true, message: 'Cuenta verificada. Queda pendiente de aprobación.' };
@@ -130,7 +141,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   // Anti fuerza bruta del código: máximo 10 intentos por minuto.
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  async verifyCode(@Body() body: { email?: string; code?: string }) {
+  async verifyCode(@Body() body: VerifyCodeDto) {
     await this.auth.validateCode(body.email || '', body.code || '');
     return { ok: true, message: 'Código válido.' };
   }
@@ -142,7 +153,7 @@ export class AuthController {
   // Anti fuerza bruta de contraseña: máximo 8 intentos por minuto por IP.
   @Throttle({ default: { limit: 8, ttl: 60000 } })
   async login(
-    @Body() body: { email?: string; password?: string },
+    @Body() body: LoginDto,
     @Res() res: Response,
   ) {
     const r = await this.auth.login(body.email || '', body.password || '');
@@ -180,7 +191,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   // Anti spam de correos de reset: máximo 3 por minuto.
   @Throttle({ default: { limit: 3, ttl: 60000 } })
-  async forgotPassword(@Body() body: { email?: string }) {
+  async forgotPassword(@Body() body: EmailDto) {
     return this.auth.requestReset(body.email || '');
   }
 
@@ -191,7 +202,7 @@ export class AuthController {
   // Anti fuerza bruta del token: máximo 5 intentos por minuto.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async resetPassword(
-    @Body() body: { email?: string; token?: string; password?: string },
+    @Body() body: ResetPasswordDto,
   ) {
     await this.auth.resetPassword(body.email || '', body.token || '', body.password || '');
     return { ok: true, message: 'Contraseña restablecida.' };
@@ -205,7 +216,7 @@ export class AuthController {
   // Anti fuerza bruta de la contraseña actual: máximo 5 intentos por minuto.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async cambiarContrasena(
-    @Body() body: { passwordActual?: string; passwordNueva?: string },
+    @Body() body: CambiarContrasenaDto,
     @CurrentUser() user: JwtUser,
   ) {
     await this.auth.cambiarContrasena(
@@ -249,7 +260,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async cambiarEstado(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { estado?: string },
+    @Body() body: EstadoUsuarioDto,
     @CurrentUser() user: JwtUser,
   ) {
     const estado = (body.estado || '').trim();
@@ -266,7 +277,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async asignarRol(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { rol?: string },
+    @Body() body: AsignarRolDto,
     @CurrentUser() user: JwtUser,
   ) {
     await this.auth.asignarRol(id, body.rol || '', user.rol);
@@ -286,7 +297,7 @@ export class AuthController {
   @Roles('superadmin')
   @RequirePermiso(PERMISSIONS.tokens_gestionar)
   @HttpCode(HttpStatus.CREATED)
-  async generarServicio(@Body() body: { nombre?: string }) {
+  async generarServicio(@Body() body: GenerarServicioDto) {
     return this.auth.generateServiceToken(body.nombre || '');
   }
 
