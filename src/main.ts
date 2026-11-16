@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AppModule } from './app.module';
 import { SnapshotService } from './snapshot/snapshot.service';
 import { AuthService } from './auth/auth.service';
+import { RolesPermisosService } from './auth/roles-permisos.service';
 
 async function bootstrap() {
   // Snapshot de BD: si la versión cambió, respalda el contenido previo ANTES
@@ -53,6 +54,7 @@ async function bootstrap() {
   if ((process.env.ENABLE_SWAGGER || 'true') === 'true') {
     const jwtSvc = app.get(JwtService);
     const authSvc = app.get(AuthService);
+    const rolesPerm = app.get(RolesPermisosService);
     const secret = process.env.JWT_SECRET || '';
     const firmarCookie = (): string => {
       const exp = Date.now() + 12 * 3600 * 1000;
@@ -89,11 +91,13 @@ async function bootstrap() {
         (typeof req.query?.token === 'string' ? (req.query.token as string) : '') ||
         (header && header.startsWith('Bearer ') ? header.slice(7) : '');
       if (!token) return false;
-      // JWT de interfaz: rol admin/superadmin.
+      // JWT de interfaz: rol con permiso 'swagger:ver' (superadmin siempre pasa).
       if (token.split('.').length === 3) {
         try {
           const payload = await jwtSvc.verifyAsync(token);
-          return payload?.rol === 'superadmin' || payload?.rol === 'admin';
+          if (payload?.rol === 'superadmin') return true;
+          const perms = await rolesPerm.permisosDeUsuario(payload?.rol);
+          return perms.includes('swagger:ver');
         } catch {
           return false;
         }

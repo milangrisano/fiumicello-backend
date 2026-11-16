@@ -55,6 +55,7 @@ export const PERMISSIONS = {
 
   // Admin: tokens de servicio
   tokens_gestionar: 'tokens:gestionar',
+  swagger_ver: 'swagger:ver',
 
   // Carta (menu)
   carta_ver: 'carta:ver',
@@ -304,6 +305,15 @@ export const CATALOGO_JERARQUICO: BotonPermisos[] = [
           },
         ],
       },
+      {
+        pestana: 'Documentación API',
+        servicios: [
+          {
+            servicio: 'Swagger',
+            crud: [{ permiso: PERMISSIONS.swagger_ver, etiqueta: 'Ver documentación API' }],
+          },
+        ],
+      },
     ],
   },
 ];
@@ -346,6 +356,7 @@ export const PERMISSION_DEFS: PermissionDef[] = [
   { key: PERMISSIONS.roles_gestionar, label: 'Gestionar roles', modulo: 'Administración' },
   // Admin tokens
   { key: PERMISSIONS.tokens_gestionar, label: 'Gestionar tokens', modulo: 'Administración' },
+  { key: PERMISSIONS.swagger_ver, label: 'Ver documentación API', modulo: 'Administración' },
   // Carta
   { key: PERMISSIONS.carta_ver, label: 'Ver carta', modulo: 'Carta (menú)' },
   { key: PERMISSIONS.carta_editar, label: 'Editar carta', modulo: 'Carta (menú)' },
