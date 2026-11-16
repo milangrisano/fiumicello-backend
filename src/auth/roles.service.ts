@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -157,7 +158,7 @@ export class RolesService {
       throw new ForbiddenException('El rol superadmin no puede crearse.');
     }
     const exist = await this.roles.findOneBy({ nombre: norm });
-    if (exist) throw new BadRequestException('El rol ya existe.');
+    if (exist) throw new ConflictException('El rol ya existe.');
 
     const clean = permisos || [];
     if (actorRol !== SUPERADMIN_ROLE) {
@@ -188,7 +189,8 @@ export class RolesService {
     descripcion: string | null,
     permisos: string[],
   ) {
-    const role = await this.roles.findOneBy({ nombre: nombreOriginal });
+    const nombreNorm = (nombreOriginal || '').trim().toLowerCase();
+    const role = await this.roles.findOneBy({ nombre: nombreNorm });
     if (!role) throw new NotFoundException('Rol no encontrado.');
 
     if (actorRol !== SUPERADMIN_ROLE) {
@@ -209,7 +211,7 @@ export class RolesService {
         throw new ForbiddenException('No puedes renombrar a superadmin.');
       }
       const exist = await this.roles.findOneBy({ nombre: nuevo });
-      if (exist) throw new BadRequestException('El rol nuevo ya existe.');
+      if (exist) throw new ConflictException('El rol nuevo ya existe.');
       role.nombre = nuevo;
     }
     role.descripcion = descripcion ?? role.descripcion;
@@ -222,7 +224,8 @@ export class RolesService {
     if (actorRol !== SUPERADMIN_ROLE) {
       throw new ForbiddenException('Solo superadmin puede eliminar roles.');
     }
-    const role = await this.roles.findOneBy({ nombre });
+    const nombreNorm = (nombre || '').trim().toLowerCase();
+    const role = await this.roles.findOneBy({ nombre: nombreNorm });
     if (!role) throw new NotFoundException('Rol no encontrado.');
     if (role.es_base) {
       throw new BadRequestException('No se puede eliminar un rol base.');
