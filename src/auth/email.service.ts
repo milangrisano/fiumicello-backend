@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { requireEnv } from '../common/env';
 
 /**
  * Email delivery contract (abstract class used as the DI token).
@@ -64,13 +65,14 @@ export class EmailServiceReal extends EmailService {
   constructor() {
     super();
     // En el .env se usa la variable RESEND_TOKEN (alias acordado con Enrique).
-    this.apiKey = (process.env.RESEND_TOKEN || '').trim();
-    this.from = (process.env.MAIL_FROM || 'Fiumicello <no-reply@fiumicello.site>').trim();
+    // PRODUCCIÓN: si falta → NO arranca (fail-fast). Jamás filtra códigos OTP
+    // por logs en un entorno real. En dev/test usa el simulado (no este).
+    this.apiKey = requireEnv('RESEND_TOKEN', 'token de Resend para correo real');
     if (!this.apiKey) {
-      this.logger.warn(
-        'RESEND_TOKEN no está definida: los correos NO se enviarán (se registrará un aviso).',
-      );
+      // Solo alcanzable en desarrollo si se instancia el real sin token.
+      this.logger.warn('RESEND_TOKEN no está definida: los correos NO se enviarán.');
     }
+    this.from = (process.env.MAIL_FROM || 'Fiumicello <no-reply@fiumicello.site>').trim();
   }
 
   /** Envía un correo HTML vía la API de Resend. Lanza si falla. */

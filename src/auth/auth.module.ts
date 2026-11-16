@@ -27,13 +27,15 @@ import { RolesController } from './roles.controller';
     JwtStrategy,
     RolesPermisosService,
     RolesService,
-    // EmailService: usa Resend (real) si hay RESEND_TOKEN; si no, simulado
-    // (loguea el código) para no romper el registro en entornos sin correo.
+    // EmailService: PRODUCCIÓN siempre usa el real (Resend) — si falta
+    // RESEND_TOKEN, EmailServiceReal hace fail-fast y el backend NO arranca
+    // (jamás filtra códigos OTP por logs). El simulado (loguea el código) solo
+    // existe en dev/test para no romper el registro sin correo real.
     {
       provide: EmailService,
       useFactory: () =>
-        (process.env.RESEND_TOKEN || '').trim()
-          ? new EmailServiceReal()
+        process.env.NODE_ENV === 'production'
+          ? new EmailServiceReal() // fail-fast si falta RESEND_TOKEN
           : new EmailServiceSimulado(),
     },
   ],
