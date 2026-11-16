@@ -190,6 +190,189 @@ async function main() {
     check('usuario de prueba creado', false, 'no se encontró en BD');
   }
 
+  // ============ FASE 1A: REGISTRO COMPLETO ============
+  console.log('\n── FASE 1A: REGISTRO COMPLETO ──');
+  const REG_EMAIL = `reg_${Date.now()}@test.local`;
+  const REG_PASS = 'Reg-Test-Pass-2026!';
+
+  // 1) register → 200
+  const reg = await raw('POST', '/auth/register', { body: { email: REG_EMAIL } });
+  check('POST /auth/register → 200', reg.status === 200, `status=${reg.status}`);
+  check('register devuelve ok', reg.data?.ok === true, `data=${JSON.stringify(reg.data)}`);
+
+  // 2) leer codigo_verificacion de la BD
+  const codigo = psql(`SELECT codigo_verificacion FROM usuarios WHERE email='${REG_EMAIL}';`);
+  check('código de verificación existe en BD', codigo !== '' && codigo !== null, `codigo=${codigo}`);
+
+  // 3) verify → 200 (queda pendiente)
+  const verify = await raw('POST', '/auth/verify', { body: { email: REG_EMAIL, code: codigo, password: REG_PASS } });
+  check('POST /auth/verify → 200', verify.status === 200, `status=${verify.status}`);
+  check('verify devuelve ok:true', verify.data?.ok === true, `data=${JSON.stringify(verify.data)}`);
+  check('verify mensaje pendiente aprobación', verify.data?.message?.includes('pendiente de aprobación') === true, `msg=${verify.data?.message}`);
+
+  // 4) el usuario queda pendiente (login → 401)
+  await sleep(1200);
+  const loginPendiente = await loginConBackoff(REG_EMAIL, REG_PASS);
+  check('login usuario pendiente → 401', loginPendiente.status === 401, `status=${loginPendiente.status}`);
+
+  // 5) aprobar como superadmin → 200
+  const regId = psql(`SELECT id FROM usuarios WHERE email='${REG_EMAIL}';`);
+  check('id usuario registrado encontrado', regId !== '' && regId !== null, `id=${regId}`);
+  const aprobar = await raw('POST', `/auth/usuarios/${regId}/aprobar`, { token: ADMIN });
+  check('POST /auth/usuarios/:id/aprobar (superadmin) → 200', aprobar.status === 200, `status=${aprobar.status}`);
+
+  // 6) login tras aprobar → 200
+  await sleep(1200);
+  const loginAprobado = await loginConBackoff(REG_EMAIL, REG_PASS);
+  check('login tras aprobar → 200 + access_token', loginAprobado.status === 200 && !!loginAprobado.data?.access_token, `status=${loginAprobado.status}`);
+
+  // limpieza del usuario de registro
+  try { psql(`DELETE FROM usuarios WHERE email='${REG_EMAIL}';`); } catch {}
+
+  // ============ FASE 1B: REFRESH + LOGOUT ============
+  console.log('\n── REFRESH + LOGOUT ──');
+
+  // 1) Login con ADMIN_EMAIL → capturar Set-Cookie fiumicello_rt
+  let loginRes;
+  for (let i = 0; i < 4; i++) {
+    loginRes = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASS }),
+    });
+    if (loginRes.status === 429) {
+      console.log('     (429 rate-limit → esperando 5s y reintento)');
+      await sleep(5000 + i * 3000);
+      continue;
+    }
+    break;
+  }
+  const loginJson = await loginRes.json().catch(() => ({}));
+  const setCookie = loginRes.headers.get('set-cookie') || '';
+  const rtMatch = setCookie.match(/fiumicello_rt=([^;]+)/);
+  const refreshCookie = rtMatch ? `fiumicello_rt=${rtMatch[1]}` : '';
+  check('login superadmin → 200 + access_token + fiumicello_rt cookie',
+    loginRes.status === 200 && !!loginJson.access_token && !!refreshCookie,
+    `status=${loginRes.status} cookie=${refreshCookie ? 'ok' : 'missing'}`);
+  const access1 = loginJson.access_token;
+
+  // 2) Refresh con la cookie → 200 + access_token nuevo y distinto
+  await sleep(1200);
+  const refreshRes = await fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Cookie': refreshCookie },
+  });
+  const refreshJson = await refreshRes.json().catch(() => ({}));
+  const newSetCookie = refreshRes.headers.get('set-cookie') || '';
+  const newRtMatch = newSetCookie.match(/fiumicello_rt=([^;]+)/);
+  const newRefreshCookie = newRtMatch ? `fiumicello_rt=${newRtMatch[1]}` : '';
+  check('refresh con cookie → 200 + access_token nuevo + cookie rotada',
+    refreshRes.status === 200 && !!refreshJson.access_token && refreshJson.access_token !== access1 && !!newRefreshCookie,
+    `status=${refreshRes.status} diff=${refreshJson.access_token !== access1} cookie=${newRefreshCookie ? 'ok' : 'missing'}`);
+  const access2 = refreshJson.access_token;
+
+  // 3) Logout con la cookie rotada → 200 {ok:true} + cookie borrada
+  const logoutRes = await fetch(`${BASE}/auth/logout`, {
+    method: 'POST',
+    headers: { 'Cookie': newRefreshCookie },
+  });
+  const logoutJson = await logoutRes.json().catch(() => ({}));
+  const logoutSetCookie = logoutRes.headers.get('set-cookie') || '';
+  const cookieCleared = logoutSetCookie.includes('fiumicello_rt=') && logoutSetCookie.includes('Max-Age=0');
+  check('logout con cookie → 200 + ok:true + cookie borrada (Max-Age=0)',
+    logoutRes.status === 200 && logoutJson.ok === true && cookieCleared,
+    `status=${logoutRes.status} ok=${logoutJson.ok} cleared=${cookieCleared}`);
+
+  // 4) Refresh con la cookie ya revocada → 401
+  const revokedRefreshRes = await fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Cookie': newRefreshCookie },
+  });
+  check('refresh con cookie revocada → 401',
+    revokedRefreshRes.status === 401,
+    `status=${revokedRefreshRes.status}`);
+
+  // ============ FASE 1C: FORGOT + RESET PASSWORD ============
+  console.log('\n── FORGOT + RESET PASSWORD ──');
+  const resetEmail = `reset_${Date.now()}@test.local`;
+  await crearUsuario(resetEmail, 'Vieja-1', 'cocinero');
+
+  // 1) forgot-password → 200
+  const forgot = await raw('POST', '/auth/forgot-password', { body: { email: resetEmail } });
+  check('POST /auth/forgot-password usuario existente → 200', forgot.status === 200, `status=${forgot.status}`);
+
+  // 2) leer el código de recuperación de la BD (el reset usa codigo_verificacion)
+  const resetToken = psql(`SELECT codigo_verificacion FROM usuarios WHERE email='${resetEmail}';`);
+  check('código de recuperación generado en BD', !!resetToken && resetToken.length > 0, `token=${resetToken}`);
+
+  // 3) reset-password con token y nueva password → 200
+  const reset = await raw('POST', '/auth/reset-password', { body: { email: resetEmail, token: resetToken, password: 'Nueva-2' } });
+  check('POST /auth/reset-password token válido → 200', reset.status === 200 && reset.data?.ok === true, `status=${reset.status} data=${JSON.stringify(reset.data)}`);
+
+  // 4) login con nueva password → 200
+  await sleep(1200);
+  const loginNueva = await loginConBackoff(resetEmail, 'Nueva-2');
+  check('login con nueva password → 200', loginNueva.status === 200, `status=${loginNueva.status}`);
+
+  // 5) login con vieja password → 401
+  await sleep(1200);
+  const loginVieja = await loginConBackoff(resetEmail, 'Vieja-1');
+  check('login con vieja password → 401', loginVieja.status === 401, `status=${loginVieja.status}`);
+
+  // 6) limpiar usuario de prueba
+  psql(`DELETE FROM usuarios WHERE email='${resetEmail}';`);
+
+  // ============ FASE 1D: CAMBIAR CONTRASEÑA ============
+  console.log('\n── CAMBIAR CONTRASEÑA ──');
+  const loginCocineroCambio = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+  check('login cocinero TEST_EMAIL → 200', loginCocineroCambio.status === 200, `status=${loginCocineroCambio.status}`);
+  const COCINERO_CAMBIO = loginCocineroCambio.data?.access_token;
+  await sleep(1200);
+
+  const nuevaPass = 'Nueva-Test-Pass-2026!';
+  const cambio = await raw('POST', '/auth/cambiar-contrasena', {
+    token: COCINERO_CAMBIO,
+    body: { passwordActual: TEST_PASS, passwordNueva: nuevaPass },
+  });
+  check('cambiar-contrasena auto-grant (cocinero) → 200', cambio.status === 200 && cambio.data?.ok === true, `status=${cambio.status} body=${JSON.stringify(cambio.data)}`);
+  await sleep(1200);
+
+  const loginNuevaPass = await loginConBackoff(TEST_EMAIL, nuevaPass);
+  check('login con nueva contraseña → 200', loginNuevaPass.status === 200, `status=${loginNuevaPass.status}`);
+  await sleep(1200);
+
+  const loginViejaPass = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+  check('login con contraseña vieja → 401', loginViejaPass.status === 401, `status=${loginViejaPass.status}`);
+  await sleep(1200);
+
+  // Restaurar a TEST_PASS para no romper checks posteriores
+  const restaura = await raw('POST', '/auth/cambiar-contrasena', {
+    token: COCINERO_CAMBIO,
+    body: { passwordActual: nuevaPass, passwordNueva: TEST_PASS },
+  });
+  check('restaurar contraseña a TEST_PASS → 200', restaura.status === 200 && restaura.data?.ok === true, `status=${restaura.status} body=${JSON.stringify(restaura.data)}`);
+  await sleep(1200);
+
+  // ============ FASE 1E: TOKENS DE SERVICIO ============
+  console.log('\n── TOKENS DE SERVICIO ──');
+  const svcNombre = `smoke_svc_${Date.now()}`;
+  const createSvc = await raw('POST', '/auth/servicios', { token: ADMIN, body: { nombre: svcNombre } });
+  check('POST /auth/servicios → 201 + token plano', createSvc.status === 201 && !!createSvc.data?.token, `status=${createSvc.status} data=${JSON.stringify(createSvc.data)}`);
+  const SVC_TOKEN = createSvc.data?.token;
+  const svcId = createSvc.data?.id;
+
+  const listSvc = await raw('GET', '/auth/servicios', { token: ADMIN });
+  check('GET /auth/servicios → 200 incluye el servicio', listSvc.status === 200 && Array.isArray(listSvc.data) && listSvc.data.some(s => s.id === svcId && s.nombre === svcNombre), `status=${listSvc.status} count=${Array.isArray(listSvc.data) ? listSvc.data.length : 'N/A'}`);
+
+  const svcPermisos = await raw('GET', '/auth/mis-permisos', { token: SVC_TOKEN });
+  check('GET /auth/mis-permisos con token servicio → 200 rol editor', svcPermisos.status === 200 && svcPermisos.data?.rol === 'editor', `status=${svcPermisos.status} rol=${svcPermisos.data?.rol}`);
+
+  const delSvc = await raw('DELETE', `/auth/servicios/${svcId}`, { token: ADMIN });
+  check('DELETE /auth/servicios/:id → 200', delSvc.status === 200, `status=${delSvc.status}`);
+
+  const svcRevoked = await raw('GET', '/auth/mis-permisos', { token: SVC_TOKEN });
+  check('token revocado ya NO autentica → 401/403', svcRevoked.status === 401 || svcRevoked.status === 403, `status=${svcRevoked.status}`);
+
   // ============ RESUMEN ============
   limpiarUsuarios();
   console.log(`\n${'─'.repeat(54)}`);

@@ -151,7 +151,9 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   // Anti fuerza bruta de contraseña: máximo 8 intentos por minuto por IP.
-  @Throttle({ default: { limit: 8, ttl: 60000 } })
+  // Configurable por env (LOGIN_THROTTLE_LIMIT) para poder subirlo en :test
+  // (la suite e2e hace varios logins legítimos seguidos); producción mantiene 8.
+  @Throttle({ default: { limit: Math.max(parseInt(process.env.LOGIN_THROTTLE_LIMIT || '8', 10), 4), ttl: 60000 } })
   async login(
     @Body() body: LoginDto,
     @Res() res: Response,
