@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,10 +11,12 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  UnauthorizedException,
   Req,
   Res,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService, REFRESH_COOKIE_NAME } from './auth.service';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
@@ -21,7 +24,7 @@ import { Throttle } from '@nestjs/throttler';
 import { RolesPermisosService } from './roles-permisos.service';
 import { CurrentUser, JwtUser } from './current-user.decorator';
 import { RequirePermiso } from './permiso.decorator';
-import { PERMISSIONS } from './permissions';
+import { PERMISSIONS, SUPERADMIN_ROLE } from './permissions';
 
 /** Lee el valor de una cookie desde el header 'Cookie' (sin cookie-parser). */
 function cookieValue(req: Request, name: string): string {
@@ -40,6 +43,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly permisos: RolesPermisosService,
+    private readonly jwt: JwtService,
   ) {}
 
   // ---- Public app config: session/inactivity timeouts (read from env). ----
@@ -50,6 +54,42 @@ export class AuthController {
       // Minutos de inactividad antes de desloguear la app.
       inactividadMin: parseInt(process.env.SESSION_INACTIVITY_MINUTES || '30', 10) || 30,
     };
+  }
+
+  // ---- Guard de archivos (nginx auth_request): valida el token de la URL
+  // /archivos/<archivo>?token=JWT antes de que nginx sirva el archivo.
+  // Es @Public para que nginx pueda llamarlo; la validación es manual aquí.
+  @Public()
+  @Get('validar-archivo')
+  async validarArchivo(@Req() req: Request) {
+    const token =
+      (req.headers['x-auth-token'] as string) ||
+      (req.query.token as string) ||
+      '';
+    if (!token) {
+      throw new UnauthorizedException('Token requerido para ver archivos.');
+    }
+    // Ruta solicitada (la pasa nginx en X-Original-URI): bloquear siempre los
+    // respaldos de BD aunque el token sea válido (nunca se sirven por HTTP).
+    const uri = (req.headers['x-original-uri'] as string) || '';
+    if (/\/BD_FIUMICELLO\//.test(uri)) {
+      throw new ForbiddenException('Respaldos de BD no se sirven por HTTP.');
+    }
+    let payload: { rol?: string } | null = null;
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new UnauthorizedException('Token inválido o expirado.');
+    }
+    if (!payload || !payload.rol) {
+      throw new UnauthorizedException('Token inválido.');
+    }
+    if (payload.rol === SUPERADMIN_ROLE) return { ok: true };
+    const perms = await this.permisos.permisosDeUsuario(payload.rol);
+    if (!perms.includes(PERMISSIONS.facturas_ver)) {
+      throw new ForbiddenException('No tienes permiso para ver archivos.');
+    }
+    return { ok: true };
   }
 
   // ---- Permissions of the logged-in user (frontend menu/actions) ----
