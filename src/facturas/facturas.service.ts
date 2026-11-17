@@ -10,6 +10,7 @@ export interface FacturasFiltros {
   desde?: string;
   hasta?: string;
   proveedor?: string;
+  q?: string; // texto libre: nº factura + proveedor + concepto (LIKE)
   estado?: string;
   metodo?: string;
   montoMin?: number;
@@ -41,6 +42,13 @@ export class FacturasService {
     }
     if (filters.proveedor) {
       qb.andWhere('f.proveedor LIKE :prov', { prov: '%' + filters.proveedor + '%' });
+    }
+    if (filters.q) {
+      // Texto libre: busca en nº factura, proveedor o concepto/descripción.
+      qb.andWhere(
+        '(f.numero_factura LIKE :qt OR f.proveedor LIKE :qt OR f.concepto LIKE :qt)',
+        { qt: '%' + filters.q + '%' },
+      );
     }
     if (filters.estado) {
       qb.andWhere('f.estado = :estado', { estado: filters.estado });
