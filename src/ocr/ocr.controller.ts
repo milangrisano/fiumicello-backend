@@ -18,6 +18,7 @@ import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
+import { resolverArchivo, esMejor, motivoMejor } from './resolucion';
 
 /**
  * Raíz de imágenes servida por nginx como `/archivos/...`. Configurable por
@@ -137,6 +138,7 @@ export class OcrController {
     let creado: any = null;
     let yaExistia = false;
     let mensaje = '';
+    let archivoExistente: string | null = null;
     try {
       if (resultado.tipo === 'factura') {
         creado = await this.facturas.create({
@@ -181,11 +183,70 @@ export class OcrController {
         'No se pudo crear';
       const id = e?.response?.message?.match(/id (\d+)/i)?.[1];
       creado = id ? { id: Number(id) } : null;
+      // Duplicado: recuperar la ruta del archivo que el registro ya tiene
+      // guardado, para compararla con la recién llegada y quedarnos con la
+      // de mejor definición (plan PLAN-COMPARAR-RESOLUCION).
+      if (id) {
+        try {
+          if (resultado.tipo === 'factura') {
+            const existente = await this.facturas.findOne(Number(id));
+            archivoExistente = (existente as any)?.archivo ?? null;
+          } else {
+            const existente = await this.comprobantes.findOne(Number(id));
+            archivoExistente = (existente as any)?.archivo ?? null;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `No se pudo leer el archivo del duplicado id=${id}: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
+    // ── Consolidación por resolución (solo duplicados) ────────────────
+    // Si el documento ya existía, comparar el archivo recién llegado con el
+    // que el registro ya tiene y conservar el de mejor definición, dejando
+    // SIEMPRE 1 archivo (la ruta del registro) + 1 sidecar, sin huérfanos.
+    let conservado: 'existente' | 'nuevo' | null = null;
+    let motivoConservacion = '';
+    if (yaExistia && archivoExistente) {
+      const rutaNuevo = path.join(IMAGENES_DIR, archivoGuardado);
+      const rutaExistente = path.join(IMAGENES_DIR, archivoExistente);
+      const existeNuevo = fs.existsSync(rutaNuevo);
+      const existeExistente = fs.existsSync(rutaExistente);
+      try {
+        if (existeNuevo && existeExistente) {
+          const rNuevo = await resolverArchivo(rutaNuevo);
+          const rExistente = await resolverArchivo(rutaExistente);
+          if (esMejor(rNuevo, rExistente)) {
+            // El nuevo es mejor: su contenido reemplaza al del registro.
+            fs.rmSync(rutaExistente, { force: true });
+            fs.renameSync(rutaNuevo, rutaExistente);
+            conservado = 'nuevo';
+            motivoConservacion = `${motivoMejor(rNuevo)} (nuevo) > ${motivoMejor(rExistente)} (existente)`;
+          } else {
+            // El existente es mejor o igual: el nuevo no debe quedar huérfano.
+            fs.rmSync(rutaNuevo, { force: true });
+            conservado = 'existente';
+            motivoConservacion = `${motivoMejor(rExistente)} (existente) >= ${motivoMejor(rNuevo)} (nuevo)`;
+          }
+        } else if (!existeExistente && existeNuevo) {
+          // Registro apuntando a un archivo inexistente: adoptar el nuevo.
+          fs.renameSync(rutaNuevo, rutaExistente);
+          conservado = 'nuevo';
+          motivoConservacion = 'el registro apuntaba a un archivo inexistente; adoptado el nuevo';
+        }
+      } catch (err) {
+        this.logger.warn(`Consolidación de resolución omitida: ${(err as Error).message}`);
+      }
     }
 
     // Escribir el sidecar JSON junto a la imagen (convención X.jpg ↔ X.json).
     // Aunque el registro ya existiera (duplicado), el sidecar se regenera con
     // los datos leídos para mantener la carpeta de imágenes siempre consistente.
+    // En duplicado consolidado, el sidecar vive bajo la ruta del registro
+    // (la que sobrevive), nunca bajo la del archivo desechado.
+    const archivoSidecar = conservado ? archivoExistente! : archivoGuardado;
     if (carpeta && resultado.tipo) {
       const datosSidecar: Record<string, unknown> = {
         tipo: resultado.tipo,
@@ -207,9 +268,20 @@ export class OcrController {
       }
       const sidecarPath = this.sidecar.write(
         IMAGENES_DIR,
-        archivoGuardado,
-        { archivo: archivoGuardado, datos: datosSidecar, usage: null },
+        archivoSidecar,
+        { archivo: archivoSidecar, datos: datosSidecar, usage: null },
       );
+      // Si el archivo desechado tenía sidecar propio (queda huérfano), quitarlo.
+      if (conservado && archivoGuardado !== archivoSidecar) {
+        const sidecarHuerfano = path.join(
+          IMAGENES_DIR,
+          SidecarService.sidecarPath(archivoGuardado),
+        );
+        if (fs.existsSync(sidecarHuerfano)) {
+          fs.rmSync(sidecarHuerfano, { force: true });
+          this.logger.log(`Sidecar huérfano eliminado: ${sidecarHuerfano}`);
+        }
+      }
       this.logger.log(`Sidecar escrito: ${sidecarPath}`);
     }
 
@@ -227,6 +299,17 @@ export class OcrController {
       total: resultado.total,
       referencia: resultado.referencia,
       texto: resultado.texto,
+      // Trazabilidad de consolidación (solo aparece en duplicados): qué archivo
+      // quedó y por qué, para que herb/Enrique puedan ver la decisión.
+      ...(conservado
+        ? {
+            resolucion: {
+              conservada: conservado,
+              archivo: archivoExistente,
+              motivo: motivoConservacion,
+            },
+          }
+        : {}),
     };
   }
 }
