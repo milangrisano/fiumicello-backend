@@ -215,7 +215,16 @@ export class OcrController {
       const existeNuevo = fs.existsSync(rutaNuevo);
       const existeExistente = fs.existsSync(rutaExistente);
       try {
-        if (existeNuevo && existeExistente) {
+        if (rutaNuevo === rutaExistente) {
+          // Misma ruta normalizada (misma fecha+ref+proveedor): el rename del
+          // paso de normalización ya dejó el archivo recién subido en la ruta
+          // del registro. NO hay dos archivos que comparar: comparar la ruta
+          // consigo misma daría "no mejor" y el borrado se llevaría el único
+          // archivo. Conservar tal cual y solo regenerar el sidecar.
+          conservado = 'existente';
+          motivoConservacion =
+            'misma ruta normalizada; el archivo recién subido ya quedó en la ruta del registro';
+        } else if (existeNuevo && existeExistente) {
           const rNuevo = await resolverArchivo(rutaNuevo);
           const rExistente = await resolverArchivo(rutaExistente);
           if (esMejor(rNuevo, rExistente)) {
