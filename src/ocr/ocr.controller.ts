@@ -151,7 +151,6 @@ export class OcrController {
     // Ruta completa relativa (con subcarpeta) para que la URL /archivos/<archivo>
     // apunte al lugar real donde se guardó el archivo.
     const archivoGuardado = relativo.replace(/\\/g, '/');
-    const archivo_url = `/archivos/${archivoGuardado}`;
 
     // ── CAPA 2: validación de coherencia del OCR (REPORTE-BUG-BAJA-RESOLUCION) ──
     // Si aun con resolución OK la IA produce referencia genérica/inventada
@@ -270,46 +269,78 @@ export class OcrController {
     // Si el documento ya existía, comparar el archivo recién llegado con el
     // que el registro ya tiene y conservar el de mejor definición, dejando
     // SIEMPRE 1 archivo (la ruta del registro) + 1 sidecar, sin huérfanos.
+    // REGLA DE INTEGRIDAD: la consolidación NUNCA debe dejar el volumen sin
+    // el archivo del registro. Nunca se borra rutaExistente antes de tener
+    // su reemplazo garantizado (renameSync reemplaza atómicamente).
+    // (Fix REPORTE-BUG-CONSOLIDACION-DESTRUYE-ARCHIVO)
     let conservado: 'existente' | 'nuevo' | null = null;
     let motivoConservacion = '';
     if (yaExistia && archivoExistente) {
       const rutaNuevo = path.join(IMAGENES_DIR, archivoGuardado);
       const rutaExistente = path.join(IMAGENES_DIR, archivoExistente);
-      const existeNuevo = fs.existsSync(rutaNuevo);
-      const existeExistente = fs.existsSync(rutaExistente);
+      const mismaRuta = path.normalize(rutaNuevo) === path.normalize(rutaExistente);
       try {
-        if (rutaNuevo === rutaExistente) {
-          // Misma ruta normalizada (misma fecha+ref+proveedor): el rename del
-          // paso de normalización ya dejó el archivo recién subido en la ruta
-          // del registro. NO hay dos archivos que comparar: comparar la ruta
-          // consigo misma daría "no mejor" y el borrado se llevaría el único
-          // archivo. Conservar tal cual y solo regenerar el sidecar.
+        if (mismaRuta) {
+          // Misma ruta normalizada (misma fecha+ref+proveedor): el paso de
+          // normalización ya dejó (renameSync línea anterior) el archivo recién
+          // subido en la ruta del registro, reemplazándolo. NO hay dos archivos
+          // que comparar (comparar la ruta consigo misma daría "no mejor" y el
+          // borrado se llevaría el único archivo). Conservar tal cual y solo
+          // regenerar el sidecar. NUNCA rmSync/renameSync sobre la misma ruta.
           conservado = 'existente';
           motivoConservacion =
             'misma ruta normalizada; el archivo recién subido ya quedó en la ruta del registro';
-        } else if (existeNuevo && existeExistente) {
-          const rNuevo = await resolverArchivo(rutaNuevo);
-          const rExistente = await resolverArchivo(rutaExistente);
-          if (esMejor(rNuevo, rExistente)) {
-            // El nuevo es mejor: su contenido reemplaza al del registro.
-            fs.rmSync(rutaExistente, { force: true });
+        } else {
+          const existeNuevo = fs.existsSync(rutaNuevo);
+          const existeExistente = fs.existsSync(rutaExistente);
+          if (existeNuevo && existeExistente) {
+            const rNuevo = await resolverArchivo(rutaNuevo);
+            const rExistente = await resolverArchivo(rutaExistente);
+            if (esMejor(rNuevo, rExistente)) {
+              // El nuevo es mejor: su contenido reemplaza al del registro.
+              // renameSync reemplaza el destino atómicamente y elimina el nuevo;
+              // NO hay rmSync previo que pueda dejar la ruta sin archivo.
+              fs.renameSync(rutaNuevo, rutaExistente);
+              conservado = 'nuevo';
+              motivoConservacion = `${motivoMejor(rNuevo)} (nuevo) > ${motivoMejor(rExistente)} (existente)`;
+            } else {
+              // El existente es mejor o igual: el nuevo no debe quedar huérfano.
+              fs.rmSync(rutaNuevo, { force: true });
+              conservado = 'existente';
+              motivoConservacion = `${motivoMejor(rExistente)} (existente) >= ${motivoMejor(rNuevo)} (nuevo)`;
+            }
+          } else if (!existeExistente && existeNuevo) {
+            // Registro apuntando a un archivo inexistente (bug previo lo dejó sin
+            // archivo): el único archivo real disponible es el nuevo. Adoptarlo
+            // (restaura el registro) dejándolo en la ruta que la BD espera.
             fs.renameSync(rutaNuevo, rutaExistente);
             conservado = 'nuevo';
-            motivoConservacion = `${motivoMejor(rNuevo)} (nuevo) > ${motivoMejor(rExistente)} (existente)`;
+            motivoConservacion = 'el registro apuntaba a un archivo inexistente; adoptado el nuevo (restauración)';
           } else {
-            // El existente es mejor o igual: el nuevo no debe quedar huérfano.
-            fs.rmSync(rutaNuevo, { force: true });
+            // (existeExistente && !existeNuevo) o ambos ausentes: no hay reemplazo,
+            // conservar el existente tal cual.
             conservado = 'existente';
-            motivoConservacion = `${motivoMejor(rExistente)} (existente) >= ${motivoMejor(rNuevo)} (nuevo)`;
+            motivoConservacion = 'no hay archivo nuevo a consolidar';
           }
-        } else if (!existeExistente && existeNuevo) {
-          // Registro apuntando a un archivo inexistente: adoptar el nuevo.
-          fs.renameSync(rutaNuevo, rutaExistente);
-          conservado = 'nuevo';
-          motivoConservacion = 'el registro apuntaba a un archivo inexistente; adoptado el nuevo';
         }
       } catch (err) {
         this.logger.warn(`Consolidación de resolución omitida: ${(err as Error).message}`);
+      }
+      // GUARD DE INTEGRIDAD (BUG 1): tras consolidar, la ruta del registro DEBE
+      // existir. Si no, restaurar desde el temporal de la subida si aún está, o
+      // NO dejar el registro apuntando a algo que no existe.
+      if (conservado && !fs.existsSync(rutaExistente)) {
+        if (fs.existsSync(rutaNuevo)) {
+          fs.renameSync(rutaNuevo, rutaExistente);
+          this.logger.warn(
+            `Guard de integridad: ruta del registro no existía; restaurada desde ${archivoGuardado}`,
+          );
+        } else {
+          this.logger.error(
+            `Guard de integridad: el archivo del registro ${archivoExistente} NO existe ni se pudo restaurar`,
+          );
+          conservado = null;
+        }
       }
     }
 
@@ -357,6 +388,12 @@ export class OcrController {
       this.logger.log(`Sidecar escrito: ${sidecarPath}`);
     }
 
+    // El archivo que FINALMENTE quedó en el volumen. En consolidación de
+    // duplicados la ruta que sobrevive es archivoExistente (la del registro);
+    // en creación normal es archivoGuardado. (Fix REPORTE-BUG-CONSOLIDACION-DESTRUYE-ARCHIVO)
+    const archivoFinal = conservado ? archivoExistente! : archivoGuardado;
+    const archivo_url_final = `/archivos/${archivoFinal}`;
+
     return {
       ok: true,
       tipo: resultado.tipo,
@@ -364,8 +401,8 @@ export class OcrController {
       ya_existia: yaExistia,
       mensaje,
       id: (creado as any)?.id ?? null,
-      archivo: file.filename,
-      archivo_url,
+      archivo: archivoGuardado,
+      archivo_url: archivo_url_final,
       beneficiario: resultado.beneficiario,
       fecha: resultado.fecha,
       total: resultado.total,
