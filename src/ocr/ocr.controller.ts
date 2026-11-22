@@ -195,10 +195,13 @@ export class OcrController {
           totalLeido,
         );
         if (cerca) {
-          // Conservar el existente (mejor resolución) y NO crear inventada.
-          fs.rmSync(path.join(IMAGENES_DIR, archivoGuardado), { force: true });
+          // Reencauzar a la consolidación: NO borrar el archivo nuevo (degradaría la
+          // resolución si es mejor que el del registro, o lo dejaría sin archivo).
+          // Se marca como duplicado y se delega a la consolidación posterior
+          // (que conserva la mejor resolución y restaura si falta).
           yaExistia = true;
           creado = { id: cerca.id };
+          archivoExistente = String(cerca.archivo ?? '');
           mensaje =
             'Posible duplicado (mismo proveedor y monto). ¿Es el mismo documento reenviado?';
         } else {
