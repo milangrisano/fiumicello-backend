@@ -8,8 +8,11 @@ export interface ComprobantesFiltros {
   desde?: string;
   hasta?: string;
   beneficiario?: string;
+  q?: string; // texto libre: referencia + concepto + beneficiario (LIKE)
   estado?: string;
   metodo?: string;
+  montoMin?: number;
+  montoMax?: number;
   limit?: number;
   offset?: number;
 }
@@ -26,8 +29,17 @@ export class ComprobantesService {
     if (f.desde) qb.andWhere('c.fecha >= :desde', { desde: f.desde });
     if (f.hasta) qb.andWhere('c.fecha <= :hasta', { hasta: f.hasta });
     if (f.beneficiario) qb.andWhere('c.beneficiario_emisor LIKE :ben', { ben: `%${f.beneficiario}%` });
+    if (f.q && f.q.trim()) {
+      // Texto libre: busca en referencia, concepto o beneficiario.
+      qb.andWhere(
+        '(c.referencia LIKE :qt OR c.concepto LIKE :qt OR c.beneficiario_emisor LIKE :qt)',
+        { qt: `%${f.q.trim()}%` },
+      );
+    }
     if (f.estado) qb.andWhere('c.estado = :estado', { estado: f.estado });
     if (f.metodo) qb.andWhere('c.metodo_pago = :met', { met: f.metodo });
+    if (f.montoMin) qb.andWhere('c.total_con_impuestos >= :min', { min: f.montoMin });
+    if (f.montoMax) qb.andWhere('c.total_con_impuestos <= :max', { max: f.montoMax });
     const limit = f.limit || 100;
     const offset = f.offset || 0;
     qb.limit(limit);

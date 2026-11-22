@@ -89,10 +89,11 @@ export class FacturasService {
   /**
    * Todos los ítems de TODAS las facturas de compra, agrupados por producto
    * (descripción) sumando cantidad y total, con el proveedor y nº de factura.
-   * Filtrable por rango de fecha de factura (desde/hasta, formato YYYY-MM-DD).
+   * Filtrable por rango de fecha de factura (desde/hasta, formato YYYY-MM-DD)
+   * y por texto libre `q` (descripción/categoría/proveedor/nº factura, LIKE).
    * Ordenado por total gastado descendente.
    */
-  async todosItems(desde?: string, hasta?: string): Promise<{ items: Record<string, unknown>[]; total: number }> {
+  async todosItems(desde?: string, hasta?: string, q?: string): Promise<{ items: Record<string, unknown>[]; total: number }> {
     const qb = this.itemsRepo
       .createQueryBuilder('i')
       .select('i.descripcion', 'descripcion')
@@ -108,6 +109,13 @@ export class FacturasService {
     }
     if (hasta) {
       qb.andWhere('i.fecha_factura <= :hasta', { hasta });
+    }
+    if (q && q.trim()) {
+      // Texto libre: busca en descripción, categoría, proveedor o nº factura.
+      qb.andWhere(
+        '(i.descripcion LIKE :qt OR i.categoria LIKE :qt OR i.proveedor LIKE :qt OR i.numero_factura LIKE :qt)',
+        { qt: '%' + q.trim() + '%' },
+      );
     }
     const rows = await qb
       .groupBy('i.descripcion')

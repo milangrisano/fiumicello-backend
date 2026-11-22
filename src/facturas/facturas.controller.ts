@@ -29,8 +29,8 @@ export class FacturasController {
 
   @Get('items')
   @RequirePermiso(PERMISSIONS.facturas_ver)
-  todosItems(@Query() q: { desde?: string; hasta?: string }) {
-    return this.facturas.todosItems(q.desde, q.hasta);
+  todosItems(@Query() q: { desde?: string; hasta?: string; q?: string }) {
+    return this.facturas.todosItems(q.desde, q.hasta, q.q);
   }
 
   @Get(':id')
