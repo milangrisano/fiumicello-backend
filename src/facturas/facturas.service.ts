@@ -154,6 +154,26 @@ export class FacturasService {
     return qb.getOne();
   }
 
+  /**
+   * Dedupe fuzzy: si existe otra factura del MISMO proveedor con total dentro de
+   * ±1% (Capa 3 — REPORTE-BUG-BAJA-RESOLUCION). Cubre el caso donde el número de
+   * factura se leyó mal en una imagen de baja calidad: aunque numero_factura no
+   * coincida, si proveedor ≈ y total ≈ es muy probable el mismo documento reenviado.
+   */
+  async findFuzzy(proveedor?: string, total?: number): Promise<Factura | null> {
+    const prov = (proveedor ?? '').trim();
+    if (!prov || total === undefined || !(total > 0)) return null;
+    const tol = total * 0.01; // ±1%
+    return this.repo
+      .createQueryBuilder('f')
+      .where('f.proveedor LIKE :prov', { prov: `%${prov}%` })
+      .andWhere('f.total_con_impuestos BETWEEN :lo AND :hi', {
+        lo: total - tol,
+        hi: total + tol,
+      })
+      .getOne();
+  }
+
   async create(dto: CreateFacturaDto): Promise<Factura> {
     const dup = await this.findDuplicada(dto);
     if (dup) {

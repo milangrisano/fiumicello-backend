@@ -19,6 +19,33 @@ export interface Resolucion {
   tieneTexto: boolean;
 }
 
+/** Umbral mínimo de definición para que el OCR pueda leer sin alucinar (ver REPORTE-BUG-BAJA-RESOLUCION). */
+export const MIN_ANCHO_PX = 300;
+export const MIN_PIXELS = 90000; // 300×300 (por debajo de tiquetes/fotos reales)
+
+export interface DimensionesImg {
+  width: number;
+  height: number;
+  pixels: number;
+}
+
+/**
+ * Mide ancho/alto/píxeles reales de una imagen vía sharp.
+ * Devuelve todos 0 si no es imagen legible (el caller decide con el umbral).
+ */
+export async function medirImagen(ruta: string): Promise<DimensionesImg> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sharp = require('sharp');
+    const meta = await sharp(ruta).metadata();
+    const width = meta.width || 0;
+    const height = meta.height || 0;
+    return { width, height, pixels: width * height };
+  } catch {
+    return { width: 0, height: 0, pixels: 0 };
+  }
+}
+
 /** Lee hasta N bytes del inicio del archivo. */
 function leerCabeza(ruta: string, max = 65536): Buffer {
   try {

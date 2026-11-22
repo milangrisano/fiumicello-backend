@@ -18,7 +18,7 @@ import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
-import { resolverArchivo, esMejor, motivoMejor } from './resolucion';
+import { resolverArchivo, esMejor, motivoMejor, medirImagen, MIN_ANCHO_PX, MIN_PIXELS } from './resolucion';
 
 /**
  * Raíz de imágenes servida por nginx como `/archivos/...`. Configurable por
@@ -102,6 +102,25 @@ export class OcrController {
       };
     }
 
+    // ── CAPA 1: rechazo por resolución insuficiente (REPORTE-BUG-BAJA-RESOLUCION) ──
+    // A baja resolución el modelo de visión alucina datos (número/fecha/total
+    // inventados) → findDuplicada no lo captura y se crea una factura falsa.
+    // Mejor no insertar y avisar que insertar un dato inventado en la contabilidad.
+    // Aplica a imágenes (no a PDFs, que llevan capa/tamaño de página suficiente).
+    if (file.mimetype && !String(file.mimetype).toLowerCase().includes('pdf')) {
+      const dims = await medirImagen(rutaOriginal);
+      if (dims.pixels > 0 && (dims.width < MIN_ANCHO_PX || dims.pixels < MIN_PIXELS)) {
+        fs.rmSync(rutaOriginal, { force: true }); // no dejar residuo del temporal
+        this.logger.warn(
+          `OCR rechazado por baja resolución: ${file.originalname} (${dims.width}×${dims.height}, ${dims.pixels}px)`);
+        return {
+          ok: false,
+          error:
+            'Imagen de muy baja resolución/ilegible. Reenvía el documento en mayor resolución.',
+        };
+      }
+    }
+
     // Mover la imagen a su subcarpeta según el tipo detectado, con el nombre
     // estructurado AAAAMMDD_REF_PROVEEDOR (igual que /api/escaneo/confirmar) para
     // que el mapeo/barrido de producción sea consistente entre ambos flujos.
@@ -134,6 +153,33 @@ export class OcrController {
     const archivoGuardado = relativo.replace(/\\/g, '/');
     const archivo_url = `/archivos/${archivoGuardado}`;
 
+    // ── CAPA 2: validación de coherencia del OCR (REPORTE-BUG-BAJA-RESOLUCION) ──
+    // Si aun con resolución OK la IA produce referencia genérica/inventada
+    // (000000, SREF, SEC..., sin dígitos) o fecha no plausible, NO crear: es
+    // señal de documento ilegible. Mejor rechazar que insertar un dato falso.
+    const refLeida = String(resultado.referencia || '').trim();
+    const refEsInventada =
+        refLeida === '' ||
+        /^sref$/i.test(refLeida) ||
+        /^[a-z]*0{3,}$/i.test(refLeida) || // "000000"
+        (/^sec/i.test(refLeida) && !/\d{6,}/.test(refLeida)); // "SECF32039" sin nº largo
+    let fechaNoPlausible = false;
+    const anioLeido =
+        Number(String(resultado.fecha || '').slice(0, 4));
+    if (anioLeido > 0 && (anioLeido < 2020 || anioLeido > new Date().getFullYear() + 1)) {
+      fechaNoPlausible = true;
+    }
+    if (refEsInventada || fechaNoPlausible) {
+      fs.rmSync(path.join(IMAGENES_DIR, archivoGuardado), { force: true });
+      this.logger.warn(
+        `OCR rechazado por datos incoherentes: ${file.originalname} → ref '${refLeida}' fecha '${resultado.fecha ?? ''}'`);
+      return {
+        ok: false,
+        error:
+          'El documento no se pudo leer con fiabilidad (datos incoherentes). Reenvía el documento en mayor resolución.',
+      };
+    }
+
     // Crear el registro automáticamente con los datos leídos.
     let creado: any = null;
     let yaExistia = false;
@@ -141,24 +187,41 @@ export class OcrController {
     let archivoExistente: string | null = null;
     try {
       if (resultado.tipo === 'factura') {
-        creado = await this.facturas.create({
-          proveedor: resultado.beneficiario || undefined,
-          fecha: resultado.fecha || undefined,
-          numero_factura: resultado.referencia || undefined,
-          total_con_impuestos: parseFloat(resultado.total) || undefined,
-          archivo: archivoGuardado,
-          items: resultado.items?.length
-            ? resultado.items.map((it) => ({
-                descripcion: it.descripcion,
-                cantidad: it.cantidad,
-                precio_unitario: it.precio_unitario,
-                base_imponible: it.base_imponible,
-                iva: it.iva,
-                total: it.total,
-              }))
-            : undefined,
-        });
-        mensaje = 'Factura creada';
+        // CAPA 3: dedupe fuzzy por proveedor + total ±1% (REPORTE-BUG-BAJA-RESOLUCION).
+        // Cubre el caso donde el número de factura se leyó mal (imagen baja calidad):
+        // aunque numero_factura no coincida, proveedor+total ≈ = mismo documento.
+        const totalLeido = parseFloat(resultado.total ?? '');
+        const cerca = await this.facturas.findFuzzy(
+          resultado.beneficiario,
+          totalLeido,
+        );
+        if (cerca) {
+          // Conservar el existente (mejor resolución) y NO crear inventada.
+          fs.rmSync(path.join(IMAGENES_DIR, archivoGuardado), { force: true });
+          yaExistia = true;
+          creado = { id: cerca.id };
+          mensaje =
+            'Posible duplicado (mismo proveedor y monto). ¿Es el mismo documento reenviado?';
+        } else {
+          creado = await this.facturas.create({
+            proveedor: resultado.beneficiario || undefined,
+            fecha: resultado.fecha || undefined,
+            numero_factura: resultado.referencia || undefined,
+            total_con_impuestos: parseFloat(resultado.total) || undefined,
+            archivo: archivoGuardado,
+            items: resultado.items?.length
+              ? resultado.items.map((it) => ({
+                  descripcion: it.descripcion,
+                  cantidad: it.cantidad,
+                  precio_unitario: it.precio_unitario,
+                  base_imponible: it.base_imponible,
+                  iva: it.iva,
+                  total: it.total,
+                }))
+              : undefined,
+          });
+          mensaje = 'Factura creada';
+        }
       } else if (
         resultado.tipo === 'comprobante_pago' ||
         resultado.tipo === 'comprobante_transferencia'
