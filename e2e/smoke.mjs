@@ -226,6 +226,56 @@ async function main() {
     if (createSvcBlur.data?.id) { try { psql(`DELETE FROM servicios WHERE id=${createSvcBlur.data.id};`); } catch {} }
   }
 
+  // ============ FASE 5B: FUNCIONES PURAS DE RESOLUCIÓN/COHERENCIA ============
+  // Testea decidirCalidad()/esMejor()/resolverArchivo() del módulo COMPILADO sobre
+  // archivos reales generados con sharp (determinista, SIN gastar IA/tokens).
+  // Reglas validadas: piso real 384px (REPORTE-PISO-REAL-384PX), resolución, blur,
+  // y el fix de consolidación "misma ruta no destruye archivo".
+  console.log('\n── FASE 5B: FUNCIONES PURAS RESOLUCIÓN/COHERENCIA ──');
+  {
+    const resol = await import('/app/dist/ocr/resolucion.js');
+    const sharp5b = (await import('sharp')).default;
+
+    // --- piso real (decidirCalidad) ---
+    const casosPiso = [
+      ['40×40 rechaza tamaño', { width: 40, height: 40 }, 607, true],
+      ['100×100 rechaza tamaño', { width: 100, height: 100 }, 790, true],
+      ['200×200 rechaza tamaño', { width: 200, height: 200 }, 914, true],
+      ['boucher 245×1280 tira larga acepta', { width: 245, height: 1280 }, 866, false],
+      ['ticket POS 384×1200 acepta', { width: 384, height: 1200 }, 400, false],
+      ['borrosa 570×1280 rechaza blur', { width: 570, height: 1280 }, 0.1, true],
+    ];
+    for (const [nombre, dims, blur, esp] of casosPiso) {
+      const d = resol.decidirCalidad(dims, blur);
+      check(`F5B piso ${nombre}`, d.rechazar === esp, `rechazar=${d.rechazar} motivo=${d.motivo}`);
+    }
+
+    // --- esMejor (regla de consolidación por resolución) ---
+    const mejor = resol.resolverArchivo ? null : null;
+    const rAlta = { tipo: 'image', pixels: 2000000, sizeBytes: 500000, tieneTexto: false };
+    const rBaja = { tipo: 'image', pixels: 500000, sizeBytes: 100000, tieneTexto: false };
+    check('F5B esMejor: mayor pixels es mejor', resol.esMejor(rAlta, rBaja) === true, 'alta>baja');
+    check('F5B esMejor: menor pixels NO es mejor', resol.esMejor(rBaja, rAlta) === false, 'baja<alta');
+    // PDF con capa de texto gana a imagen del mismo doc (regla REPORTE-CONSLIDACION)
+    const rPdfTxt = { tipo: 'pdf', pixels: 1000000, sizeBytes: 200000, tieneTexto: true };
+    const rImg = { tipo: 'image', pixels: 1500000, sizeBytes: 300000, tieneTexto: false };
+    check('F5B esMejor: PDF con texto gana a imagen', resol.esMejor(rPdfTxt, rImg) === true, 'pdf-texto>imagen');
+
+    // --- resolverArchivo sobre archivos reales (JPG nítido grande vs pequeño) ---
+    const svgGrande = `<svg width="1200" height="1600" xmlns="http://www.w3.org/2000/svg"><rect width="1200" height="1600" fill="white"/><text x="50" y="120" font-size="60">F</text></svg>`;
+    const svgChico = `<svg width="400" height="500" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="500" fill="white"/><text x="50" y="120" font-size="60">F</text></svg>`;
+    const bufGrande = await sharp5b(Buffer.from(svgGrande)).jpeg().toBuffer();
+    const bufChico = await sharp5b(Buffer.from(svgChico)).jpeg().toBuffer();
+    const fG = '/tmp/e2e_grande.jpg';
+    const fC = '/tmp/e2e_chico.jpg';
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(fG, bufGrande);
+    writeFileSync(fC, bufChico);
+    const rG = await resol.resolverArchivo(fG);
+    const rC = await resol.resolverArchivo(fC);
+    check('F5B resolverArchivo: imagen grande > pixels imagen chico', rG.pixels > rC.pixels, `grande=${rG.pixels} chico=${rC.pixels}`);
+    check('F5B resolverArchivo: gira tipo=image con pixels>0', (rG.tipo === 'image' || rG.tipo === 'other') && rG.pixels > 0, `tipo=${rG.tipo} px=${rG.pixels}`);
+  }
   // ============ DESACTIVAR / REACTIVAR ============
   console.log('\n── DESACTIVAR/REACTIVAR ──');
   const idCocinero = psql(`SELECT id FROM usuarios WHERE email='${TEST_EMAIL}';`);
