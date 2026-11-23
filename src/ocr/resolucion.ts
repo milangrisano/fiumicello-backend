@@ -19,11 +19,12 @@ export interface Resolucion {
   tieneTexto: boolean;
 }
 
-/** Umbral mínimo ABSOLUTO de píxeles: solo para captar tamaños absurdos
- *  (p. ej. iconos 40×40). NO es el criterio de calidad: una imagen nítida de
- *  cualquier proporción legítima (boucher 245×1280 = 313.600 px) debe pasar.
- *  El criterio real de legibilidad es la varianza del Laplaciano (calcularBlur). */
-export const MIN_PIXELS_ABSURDOS = 10000; // 100×100
+/** Umbral mínimo de píxeles para considerar un documento legible.
+ *  Recalibrado 2026-11-23 (REPORTE-BUG-BLUR-PEQUENAS): 150×150 (22.500 px) es
+ *  ilegible → el OCR alucina y crea registros falsos; 200×200 (40.000 px) es
+ *  legible. Por debajo de 30.000 px (~175×175) un documento contable no puede
+ *  tener texto legible → rechazar SIEMPRE. */
+export const MIN_PIXELS_LEGIBLES = 30000; // ~175×175
 
 /** Umbral de nitidez (varianza del Laplaciano normalizada a 800px).
  *  Calibrado 2026-11-22 con lote real IRCC en :test:
@@ -37,14 +38,17 @@ export const MIN_BLUR = 20;
  *  - Imagen GRANDE (>= MIN_PIXELS_PEQUENA): basta blur NATIVO (sin estirar)
  *    ≥ MIN_BLUR. Cubre bouchers largos (245×1280=313.600px, nativo 1057) y
  *    fotos normales (50%=230.400px, nativo 588).
- *  - Imagen PEQUEÑA (< MIN_PIXELS_PEQUENA): exige blur NATIVO mucho mayor
- *    (≥ MIN_BLUR_PEQUENA) para distinguir capturas nítidas legítimas de texto
- *    grande (200×200 nítida → nativo 978) de reducciones ilegibles
- *    (25%→404, 35%→519) que alucinan datos. Sin estirar: estirar castigaba a
- *    la nítida pequeña; sin estirar, la reducción ilegible queda expuesta.
+ *  - Imagen PEQUEÑA (< MIN_PIXELS_PEQUENA y >= MIN_PIXELS_LEGIBLES): exige
+ *    blur NATIVO ≥ MIN_BLUR_PEQUENA (para distinguir nítida legítima de
+ *    reducción ilegible) Y blur ESTIRADO a 400px ≥ MIN_BLUR_ESTIRADO (la
+ *    reducción ilegible no resiste la ampliación: 150×150 → 34.8 vs la nítida
+ *    200×200 → 91.6). Esto cierra el agujero del rango medio-pequeño
+ *    (REPORTE-BUG-BLUR-PEQUENAS: 150×150 ilegible pasaba con blur nativo 875).
  *  Calibrado con lote real en :test (2026-11-23). */
 export const MIN_PIXELS_PEQUENA = 150000; // ~390×390: por debajo → exigir nitidez fina
 export const MIN_BLUR_PEQUENA = 650;      // 978 (200×200 nítida) vs 519 (35% ilegible) vs 404 (25%)
+export const MIN_BLUR_ESTIRADO = 60;      // estirado a 400px: 91.6 (200×200 nítida) vs 34.8 (150×150 ilegible)
+export const ANCHO_ESTIRADO = 400;        // normalización del blur estirado en pequeñas
 
 export interface DecisionCalidad {
   rechazar: boolean;
@@ -52,27 +56,42 @@ export interface DecisionCalidad {
 }
 
 /**
- * Decisión pura de la Capa 1 (REPORTE-CAPA1-CALIDAD-BLUR, mix):
- * - Tamaño absurdo (< MIN_PIXELS_ABSURDOS) → rechazar.
+ * Decisión pura de la Capa 1 (REPORTE-CAPA1-CALIDAD-BLUR + BUG-BLUR-PEQUENAS):
+ * - Tamaño ilegible (< MIN_PIXELS_LEGIBLES) → rechazar SIEMPRE (no alcanza
+ *   para texto legible; el OCR alucina).
  * - Grande (>= MIN_PIXELS_PEQUENA): blur nativo >= MIN_BLUR.
- * - Pequeña (< MIN_PIXELS_PEQUENA): blur nativo >= MIN_BLUR_PEQUENA
- *   (una reducción ilegible se ve "nítida" a su escala pero no es legible).
+ * - Pequeña (MIN_PIXELS_LEGIBLES..MIN_PIXELS_PEQUENA): blur nativo >=
+ *   MIN_BLUR_PEQUENA Y blur estirado (a 400px) >= MIN_BLUR_ESTIRADO —
+ *   una reducción ilegible se ve "nítida" a su escala pero se cae al ampliarla.
+ * `blurEstirado` puede pasarse -1 si no se midió (para pequeñas siempre se mide).
  * Separada del controller para poder testearla en la suite e2e sin IA.
  */
 export function decidirCalidad(
   dims: DimensionesImg,
   blur: number,
+  blurEstirado = -1,
 ): DecisionCalidad {
-  const tamAbsurdo = dims.pixels > 0 && dims.pixels < MIN_PIXELS_ABSURDOS;
+  const ilegible = dims.pixels > 0 && dims.pixels < MIN_PIXELS_LEGIBLES;
+  if (ilegible)
+    return {
+      rechazar: true,
+      motivo: 'tamaño insuficiente para texto legible',
+    };
   const pequena = dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA;
   const umbral = pequena ? MIN_BLUR_PEQUENA : MIN_BLUR;
   const borrosa = blur >= 0 && blur < umbral;
-  if (tamAbsurdo) return { rechazar: true, motivo: 'tamaño absurdo' };
   if (borrosa)
     return {
       rechazar: true,
       motivo: pequena ? 'pequeña insuficientemente nítida' : 'borrosa',
     };
+  // Doble medición en pequeñas: la reducción ilegible se cae al estirar.
+  if (pequena && blurEstirado >= 0 && blurEstirado < MIN_BLUR_ESTIRADO) {
+    return {
+      rechazar: true,
+      motivo: 'reducción ilegible (no resiste la ampliación)',
+    };
+  }
   return { rechazar: false, motivo: 'aceptada' };
 }
 
@@ -93,12 +112,13 @@ export function decidirCalidad(
 export async function calcularBlur(
   ruta: string,
   withEnlargement = false,
+  ancho = 800,
 ): Promise<number> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require('sharp');
     const { data } = await sharp(ruta)
-      .resize({ width: 800, withoutEnlargement: !withEnlargement })
+      .resize({ width: ancho, withoutEnlargement: !withEnlargement })
       .grayscale()
       .convolve({
         width: 3,

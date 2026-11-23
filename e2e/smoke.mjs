@@ -178,23 +178,28 @@ async function main() {
   console.log('\n── FASE 5A: CALIDAD OCR (blur) ──');
   {
     const resolucion = await import('/app/dist/ocr/resolucion.js');
-    // Casos calibrados (blur NATIVO sin estirar medido sobre el lote real):
-    // grandes (>=150k px): boucher 245×1280 (313.600px, blur 1057) y 50% (230.400px, blur 588)
-    // pequeñas (<150k px): 200×200 nítida (40.000px, blur 978) vs reducciones ilegibles 35% (112.896px, blur 519) y 25% (57.600px, blur 404)
-    // absurdo: 72×128 (9.216px) → rechaza por tamaño
-    // borrosa grande: 900×1200 (1.080.000px, blur 0.1) → rechaza
+    // Casos calibrados (blur NATIVO sin estirar; blur ESTIRADO a 400px en pequeñas).
+    // Datos reales de :test (REPORTE-CAPA1-CALIDAD-BLUR + BUG-BLUR-PEQUENAS):
+    // grandes (>=150k px): boucher 245×1280 (313.600px, nativo 866) y 50% (230.400px, nativo 588)
+    // pequeñas (30k..150k px): 200×200 nítida (40.000px, nativo 914, estirado 91.6) vs
+    //   ilegibles 150×150 (22.500px — rechazada por MIN_PIXELS_LEGIBLES), 35% (112.896px, nativo 519)
+    //   y 25% (57.600px, nativo 404); reducción 180×240 (43.200px) → estirado bajo → rechaza
+    // absurdo: 72×128 (9.216px) → rechaza por tamaño ilegible
+    // borrosa grande: 900×1200 (1.080.000px, nativo 0.1) → rechaza
     const casos = [
-      // nombre, dims {width,height,pixels}, blur, esperado (false=acepta, true=rechaza)
-      ['boucher 245×1280 nítido (grande) acepta', { width: 245, height: 1280, pixels: 313600 }, 1057.5, false],
-      ['50% 360×640 legible (grande) acepta', { width: 360, height: 640, pixels: 230400 }, 588.4, false],
-      ['200×200 nítida (pequeña) acepta', { width: 200, height: 200, pixels: 40000 }, 977.9, false],
-      ['borrosa grande 900×1200 rechaza', { width: 900, height: 1200, pixels: 1080000 }, 0.1, true],
-      ['35% 252×448 ilegible (pequeña) rechaza', { width: 252, height: 448, pixels: 112896 }, 518.8, true],
-      ['25% 180×320 ilegible (pequeña) rechaza', { width: 180, height: 320, pixels: 57600 }, 403.9, true],
-      ['72×128 absurdo rechaza por tamaño', { width: 72, height: 128, pixels: 9216 }, 1338.4, true],
+      // nombre, dims {width,height,pixels}, blur nativo, blur estirado, esperado (false=acepta, true=rechaza)
+      ['boucher 245×1280 nítido (grande) acepta', { width: 245, height: 1280, pixels: 313600 }, 866.7, -1, false],
+      ['50% 360×640 legible (grande) acepta', { width: 360, height: 640, pixels: 230400 }, 588.4, -1, false],
+      ['200×200 nítida (pequeña) acepta', { width: 200, height: 200, pixels: 40000 }, 914.0, 91.6, false],
+      ['150×150 ILEGIBLE rechaza (tamaño insuficiente)', { width: 150, height: 150, pixels: 22500 }, 875.2, 34.8, true],
+      ['180×240 reducción ilegible rechaza (estirado)', { width: 180, height: 240, pixels: 43200 }, 820.0, 12.0, true],
+      ['borrosa grande 900×1200 rechaza', { width: 900, height: 1200, pixels: 1080000 }, 0.1, -1, true],
+      ['35% 252×448 ilegible (pequeña) rechaza', { width: 252, height: 448, pixels: 112896 }, 518.8, 20.0, true],
+      ['25% 180×320 ilegible (pequeña) rechaza', { width: 180, height: 320, pixels: 57600 }, 403.9, 8.0, true],
+      ['72×128 absurdo rechaza por tamaño', { width: 72, height: 128, pixels: 9216 }, 1338.4, -1, true],
     ];
-    for (const [nombre, dims, blur, esperado] of casos) {
-      const d = resolucion.decidirCalidad(dims, blur);
+    for (const [nombre, dims, blur, estirado, esperado] of casos) {
+      const d = resolucion.decidirCalidad(dims, blur, estirado);
       check(`Capa1 ${nombre}`, d.rechazar === esperado, `rechazar=${d.rechazar} motivo=${d.motivo}`);
     }
 
