@@ -1117,6 +1117,228 @@ async function main() {
   }
   // ==== FIN BLOQUE NEGOCIO C ====
 
+  // ============ SEGURIDAD AUTH: 403 SIN TOKEN / PÚBLICOS / PERMISOS / REGLAS ============
+  console.log('\n── SEGURIDAD AUTH (sin token, públicos, permisos, reglas) ──');
+  {
+    const cfgPub = await raw('GET', '/auth/config');
+    check('AuthSec: GET /auth/config público → 200 sin token', cfgPub.status === 200 && typeof cfgPub.data?.inactividadMin === 'number', `status=${cfgPub.status}`);
+
+    const protegidosSinToken = [
+      { method: 'GET', path: '/auth/mis-permisos', body: null },
+      { method: 'POST', path: '/auth/cambiar-contrasena', body: { passwordActual: 'x', passwordNueva: 'y' } },
+      { method: 'GET', path: '/auth/usuarios/pendientes', body: null },
+      { method: 'GET', path: '/auth/usuarios', body: null },
+      { method: 'GET', path: '/auth/servicios', body: null },
+      { method: 'GET', path: '/auth/roles/catalogo', body: null },
+      { method: 'GET', path: '/auth/roles/catalogo-arbol', body: null },
+      { method: 'GET', path: '/auth/roles', body: null },
+    ];
+    for (const ep of protegidosSinToken) {
+      const r = await raw(ep.method, ep.path, { body: ep.body || null });
+      check(`AuthSec: ${ep.method} ${ep.path} sin token → 403`, r.status === 403, `status=${r.status}`);
+    }
+    const postRolesSinTok = await raw('POST', '/auth/roles', { body: { nombre: 'test', permisos: [] } });
+    check('AuthSec: POST /auth/roles sin token → 403', postRolesSinTok.status === 403, `status=${postRolesSinTok.status}`);
+    const putRolesSinTok = await raw('PUT', '/auth/roles/test', { body: { descripcion: 'x' } });
+    check('AuthSec: PUT /auth/roles/:nombre sin token → 403', putRolesSinTok.status === 403, `status=${putRolesSinTok.status}`);
+    const delRolesSinTok = await raw('DELETE', '/auth/roles/test');
+    check('AuthSec: DELETE /auth/roles/:nombre sin token → 403', delRolesSinTok.status === 403, `status=${delRolesSinTok.status}`);
+    const postSvcSinTok = await raw('POST', '/auth/servicios', { body: { nombre: 'x' } });
+    check('AuthSec: POST /auth/servicios sin token → 403', postSvcSinTok.status === 403, `status=${postSvcSinTok.status}`);
+    const delSvcSinTok = await raw('DELETE', '/auth/servicios/1');
+    check('AuthSec: DELETE /auth/servicios/:id sin token → 403', delSvcSinTok.status === 403, `status=${delSvcSinTok.status}`);
+    const idInex = 999999;
+    const aprSinTok = await raw('POST', `/auth/usuarios/${idInex}/aprobar`);
+    check('AuthSec: POST /auth/usuarios/:id/aprobar sin token → 403', aprSinTok.status === 403, `status=${aprSinTok.status}`);
+    const estSinTok = await raw('POST', `/auth/usuarios/${idInex}/estado`, { body: { estado: 'aprobado' } });
+    check('AuthSec: POST /auth/usuarios/:id/estado sin token → 403', estSinTok.status === 403, `status=${estSinTok.status}`);
+    const rolSinTok = await raw('POST', `/auth/usuarios/${idInex}/rol`, { body: { rol: 'cocinero' } });
+    check('AuthSec: POST /auth/usuarios/:id/rol sin token → 403', rolSinTok.status === 403, `status=${rolSinTok.status}`);
+
+    const loginCoc = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+    const COC = loginCoc.data?.access_token;
+    await sleep(1200);
+    const endpointsReqPermiso = [
+      { method: 'GET', path: '/auth/mis-permisos', body: null },
+      { method: 'GET', path: '/auth/usuarios/pendientes', body: null },
+      { method: 'GET', path: '/auth/usuarios', body: null },
+      { method: 'GET', path: '/auth/servicios', body: null },
+      { method: 'GET', path: '/auth/roles/catalogo', body: null },
+      { method: 'GET', path: '/auth/roles/catalogo-arbol', body: null },
+      { method: 'GET', path: '/auth/roles', body: null },
+    ];
+    for (const ep of endpointsReqPermiso) {
+      // mis-permisos es auto-grant (ver sus propios permisos) → 200; el resto exige permiso → 403
+      const esperado = ep.path === '/auth/mis-permisos' ? 200 : 403;
+      const r = await raw(ep.method, ep.path, { token: COC, body: ep.body || null });
+      check(`AuthSec: ${ep.method} ${ep.path} con cocinero → ${esperado}`, r.status === esperado, `status=${r.status}`);
+    }
+    const postRolesCoc = await raw('POST', '/auth/roles', { token: COC, body: { nombre: 'rol_coc', permisos: [] } });
+    check('AuthSec: POST /auth/roles con cocinero → 403', postRolesCoc.status === 403, `status=${postRolesCoc.status}`);
+    const postSvcCoc = await raw('POST', '/auth/servicios', { token: COC, body: { nombre: 'svc_coc' } });
+    check('AuthSec: POST /auth/servicios con cocinero → 403', postSvcCoc.status === 403, `status=${postSvcCoc.status}`);
+    const estCoc = await raw('POST', `/auth/usuarios/${idInex}/estado`, { token: COC, body: { estado: 'aprobado' } });
+    check('AuthSec: POST /auth/usuarios/:id/estado con cocinero → 403', estCoc.status === 403, `status=${estCoc.status}`);
+
+    const crearSuper = await raw('POST', '/auth/roles', { token: ADMIN, body: { nombre: 'superadmin', permisos: [] } });
+    check('AuthSec: POST /auth/roles nombre superadmin → 403', crearSuper.status === 403, `status=${crearSuper.status}`);
+    const rolTempNombre = `rol_temp_${Date.now()}`;
+    const crearTemp = await raw('POST', '/auth/roles', { token: ADMIN, body: { nombre: rolTempNombre, permisos: [] } });
+    check('AuthSec: setup crear rol temporal → 201', crearTemp.status === 201, `status=${crearTemp.status}`);
+    const renombrarSuper = await raw('PUT', `/auth/roles/${rolTempNombre}`, { token: ADMIN, body: { nombre: 'superadmin' } });
+    check('AuthSec: PUT /auth/roles/:nombre renombrar a superadmin → 403', renombrarSuper.status === 403, `status=${renombrarSuper.status}`);
+    try { psql(`DELETE FROM roles WHERE nombre='${rolTempNombre}';`); } catch {}
+    const rolesBase = ['admin', 'encargado', 'cajero', 'cocinero', 'mesero', 'ayudante'];
+    for (const rb of rolesBase) {
+      const delBase = await raw('DELETE', `/auth/roles/${rb}`, { token: ADMIN });
+      check(`AuthSec: DELETE /auth/roles/${rb} (rol base) → 400`, delBase.status === 400, `status=${delBase.status}`);
+    }
+    const userNormalEmail = `normal_${Date.now()}@test.local`;
+    await crearUsuario(userNormalEmail, 'Pass-123', 'mesero');
+    const userNormalId = psql(`SELECT id FROM usuarios WHERE email='${userNormalEmail}';`);
+    if (userNormalId) {
+      const asignarSuperConCoc = await raw('POST', `/auth/usuarios/${userNormalId}/rol`, { token: COC, body: { rol: 'superadmin' } });
+      check('AuthSec: asignar superadmin con cocinero → 403', asignarSuperConCoc.status === 403, `status=${asignarSuperConCoc.status}`);
+      psql(`DELETE FROM usuarios WHERE id=${userNormalId};`);
+    }
+    const adminId = psql(`SELECT id FROM usuarios WHERE email='${ADMIN_EMAIL}';`);
+    if (adminId) {
+      const modificarSuperConCoc = await raw('POST', `/auth/usuarios/${adminId}/rol`, { token: COC, body: { rol: 'cocinero' } });
+      check('AuthSec: modificar superadmin con cocinero → 403', modificarSuperConCoc.status === 403, `status=${modificarSuperConCoc.status}`);
+    }
+    const passMala = await raw('POST', '/auth/cambiar-contrasena', { token: COC, body: { passwordActual: 'Clave-Incorrecta-999', passwordNueva: 'Nueva-123' } });
+    if (passMala.status === 429) { await sleep(62000); }
+    const passMala2 = passMala.status === 429 ? await raw('POST', '/auth/cambiar-contrasena', { token: COC, body: { passwordActual: 'Clave-Incorrecta-999', passwordNueva: 'Nueva-123' } }) : passMala;
+    check('AuthSec: cambiar-contrasena passwordActual mala → 401', passMala2.status === 401, `status=${passMala2.status}`);
+
+    const verifyEmail = `verify_${Date.now()}@test.local`;
+    const regVerify = await raw('POST', '/auth/register', { body: { email: verifyEmail } });
+    const codigo = psql(`SELECT codigo_verificacion FROM usuarios WHERE email='${verifyEmail}';`);
+    if (codigo) {
+      const vcValido = await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: codigo } });
+      if (vcValido.status === 429) { await sleep(62000); }
+      const vcValido2 = vcValido.status === 429 ? await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: codigo } }) : vcValido;
+      check('AuthSec: verify-code válido → 200 ok:true', vcValido2.status === 200 && vcValido2.data?.ok === true, `status=${vcValido2.status}`);
+      const vcInvalido = await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: '000000' } });
+      if (vcInvalido.status === 429) { await sleep(62000); }
+      const vcInvalido2 = vcInvalido.status === 429 ? await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: '000000' } }) : vcInvalido;
+      check('AuthSec: verify-code incorrecto → 400', vcInvalido2.status === 400, `status=${vcInvalido2.status}`);
+      psql(`UPDATE usuarios SET codigo_expiracion = NOW() - INTERVAL '1 hour' WHERE email='${verifyEmail}';`);
+      const vcExpirado = await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: codigo } });
+      if (vcExpirado.status === 429) { await sleep(62000); }
+      const vcExpirado2 = vcExpirado.status === 429 ? await raw('POST', '/auth/verify-code', { body: { email: verifyEmail, code: codigo } }) : vcExpirado;
+      check('AuthSec: verify-code expirado → 400', vcExpirado2.status === 400, `status=${vcExpirado2.status}`);
+      psql(`DELETE FROM usuarios WHERE email='${verifyEmail}';`);
+    }
+
+    const misPermAdmin = await raw('GET', '/auth/mis-permisos', { token: ADMIN });
+    check('AuthSec: mis-permisos superadmin → 200 rol+permisos', misPermAdmin.status === 200 && misPermAdmin.data?.rol === 'superadmin' && Array.isArray(misPermAdmin.data?.permisos), `status=${misPermAdmin.status}`);
+    const misPermCoc = await raw('GET', '/auth/mis-permisos', { token: COC });
+    check('AuthSec: mis-permisos cocinero → 200 rol+permisos', misPermCoc.status === 200 && misPermCoc.data?.rol === 'cocinero' && Array.isArray(misPermCoc.data?.permisos), `status=${misPermCoc.status}`);
+
+    const listAdmin = await raw('GET', '/auth/usuarios', { token: ADMIN });
+    check('AuthSec: GET /auth/usuarios superadmin → 200', listAdmin.status === 200 && Array.isArray(listAdmin.data), `status=${listAdmin.status}`);
+    const pendAdmin = await raw('GET', '/auth/usuarios/pendientes', { token: ADMIN });
+    check('AuthSec: GET /auth/usuarios/pendientes superadmin → 200', pendAdmin.status === 200 && Array.isArray(pendAdmin.data), `status=${pendAdmin.status}`);
+    const listCoc = await raw('GET', '/auth/usuarios', { token: COC });
+    check('AuthSec: GET /auth/usuarios cocinero → 403', listCoc.status === 403, `status=${listCoc.status}`);
+
+    const userRolEmail = `userrol_${Date.now()}@test.local`;
+    await crearUsuario(userRolEmail, 'Pass-123', 'ayudante');
+    const userRolId = psql(`SELECT id FROM usuarios WHERE email='${userRolEmail}';`);
+    if (userRolId) {
+      const asignarNormal = await raw('POST', `/auth/usuarios/${userRolId}/rol`, { token: ADMIN, body: { rol: 'mesero' } });
+      check('AuthSec: asignar rol mesero con superadmin → 200', asignarNormal.status === 200 && asignarNormal.data?.ok === true, `status=${asignarNormal.status}`);
+      const rolNuevo = psql(`SELECT rol FROM usuarios WHERE id=${userRolId};`);
+      check('AuthSec: rol persistido en BD = mesero', rolNuevo === 'mesero', `rol=${rolNuevo}`);
+      const asignarSinPerm = await raw('POST', `/auth/usuarios/${userRolId}/rol`, { token: COC, body: { rol: 'cajero' } });
+      check('AuthSec: asignar rol con cocinero → 403', asignarSinPerm.status === 403, `status=${asignarSinPerm.status}`);
+      psql(`DELETE FROM usuarios WHERE id=${userRolId};`);
+    }
+  }
+  // ==== FIN BLOQUE SEGURIDAD-AUTH ====
+  // ============ SEGURIDAD NEGOCIO: 403 SIN TOKEN / PÚBLICOS / PERMISOS FINOS ============
+  console.log('\n── SEGURIDAD NEGOCIO (sin token, públicos, permisos) ──');
+  {
+    const fId = await raw('GET', '/facturas/999999');
+    check('NegSec: GET /facturas/:id sin token → 403', fId.status === 403, `status=${fId.status}`);
+    const fItems = await raw('GET', '/facturas/items');
+    check('NegSec: GET /facturas/items sin token → 403', fItems.status === 403, `status=${fItems.status}`);
+    const cList = await raw('GET', '/comprobantes');
+    check('NegSec: GET /comprobantes sin token → 403', cList.status === 403, `status=${cList.status}`);
+    const cId = await raw('GET', '/comprobantes/999999');
+    check('NegSec: GET /comprobantes/:id sin token → 403', cId.status === 403, `status=${cId.status}`);
+    const vList = await raw('GET', '/ventas');
+    check('NegSec: GET /ventas sin token → 403', vList.status === 403, `status=${vList.status}`);
+    const vFormas = await raw('GET', '/ventas/formas-pago');
+    check('NegSec: GET /ventas/formas-pago sin token → 403', vFormas.status === 403, `status=${vFormas.status}`);
+    const pList = await raw('GET', '/pedidos');
+    check('NegSec: GET /pedidos sin token → 403', pList.status === 403, `status=${pList.status}`);
+    const pId = await raw('GET', '/pedidos/999999');
+    check('NegSec: GET /pedidos/:id sin token → 403', pId.status === 403, `status=${pId.status}`);
+    const cAct = await raw('GET', '/caja/activo');
+    check('NegSec: GET /caja/activo sin token → 403', cAct.status === 403, `status=${cAct.status}`);
+    const cTurnos = await raw('GET', '/caja/turnos');
+    check('NegSec: GET /caja/turnos sin token → 403', cTurnos.status === 403, `status=${cTurnos.status}`);
+    const cArq = await raw('GET', '/caja/999999/arqueo');
+    check('NegSec: GET /caja/:id/arqueo sin token → 403', cArq.status === 403, `status=${cArq.status}`);
+    const rList = await raw('GET', '/resumenes?mes=2026-10');
+    check('NegSec: GET /resumenes sin token → 403', rList.status === 403, `status=${rList.status}`);
+    const rCont = await raw('GET', '/resumenes/contable?mes=2026-10');
+    check('NegSec: GET /resumenes/contable sin token → 403', rCont.status === 403, `status=${rCont.status}`);
+    const rUlt = await raw('GET', '/resumenes/ultima-fecha');
+    check('NegSec: GET /resumenes/ultima-fecha sin token → 403', rUlt.status === 403, `status=${rUlt.status}`);
+    const gRes = await raw('GET', '/gastos/resumen?mes=2026-10');
+    check('NegSec: GET /gastos/resumen sin token → 403', gRes.status === 403, `status=${gRes.status}`);
+    const gCat = await raw('GET', '/gastos/por-categoria?mes=2026-10');
+    check('NegSec: GET /gastos/por-categoria sin token → 403', gCat.status === 403, `status=${gCat.status}`);
+    const gTot = await raw('GET', '/gastos/total?mes=2026-10');
+    check('NegSec: GET /gastos/total sin token → 403', gTot.status === 403, `status=${gTot.status}`);
+    const cAdm = await raw('GET', '/carta/administracion');
+    check('NegSec: GET /carta/administracion sin token → 403', cAdm.status === 403, `status=${cAdm.status}`);
+
+    const pubCarta = await raw('GET', '/carta');
+    check('NegSec: GET /carta (pública) → 200 sin token', pubCarta.status === 200, `status=${pubCarta.status}`);
+    const pubHealth = await raw('GET', '/health');
+    check('NegSec: GET /health (pública) → 200 sin token', pubHealth.status === 200, `status=${pubHealth.status}`);
+
+    const loginCocinero = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+    check('NegSec: login cocinero → 200 + token', loginCocinero.status === 200 && !!loginCocinero.data?.access_token, `status=${loginCocinero.status}`);
+    const COCINERO = loginCocinero.data?.access_token;
+    await sleep(1200);
+
+    const admCoc = await raw('GET', '/carta/administracion', { token: COCINERO });
+    check('NegSec: /carta/administracion con cocinero (sin carta:editar) → 403', admCoc.status === 403, `status=${admCoc.status}`);
+
+    const cartaTmp = await raw('GET', '/carta', { token: ADMIN });
+    let idProdTmp = 48;
+    if (cartaTmp.status === 200 && cartaTmp.data?.categorias) {
+      const todos = []; for (const c of cartaTmp.data.categorias) if (Array.isArray(c.items)) todos.push(...c.items);
+      if (todos.length) idProdTmp = todos[0].id || 48;
+    }
+    const vTmp = await raw('POST', '/ventas', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: 'TMP', items: [{ id_producto: idProdTmp, cantidad: 1 }] } });
+    const vId = vTmp.data?.id;
+    if (vId) {
+      const delCoc = await raw('DELETE', `/ventas/${vId}`, { token: COCINERO });
+      check('NegSec: DELETE /ventas/:id con cocinero (no superadmin) → 403', delCoc.status === 403, `status=${delCoc.status}`);
+      await raw('DELETE', `/ventas/${vId}`, { token: ADMIN });
+    }
+
+    const propCoc = await raw('POST', '/caja/propina/pago', { token: COCINERO, body: { fecha_pago: new Date().toISOString().slice(0,10), monto_efectivo: 1000, monto_otros: 0 } });
+    check('NegSec: /caja/propina/pago con cocinero (sin caja_ver) → 403', propCoc.status === 403, `status=${propCoc.status}`);
+    const propListCoc = await raw('GET', '/caja/propina/pagos', { token: COCINERO });
+    check('NegSec: /caja/propina/pagos con cocinero (sin caja_ver) → 403', propListCoc.status === 403, `status=${propListCoc.status}`);
+    const movCoc = await raw('POST', '/caja/movimiento/egreso', { token: COCINERO, body: { id_turno: 1, concepto: 'X', monto: 1 } });
+    check('NegSec: /caja/movimiento/egreso con cocinero (sin caja_ver) → 403', movCoc.status === 403, `status=${movCoc.status}`);
+    const movIngCoc = await raw('POST', '/caja/movimiento/ingreso', { token: COCINERO, body: { id_turno: 1, concepto: 'X', monto: 1, autorizado_por: 1 } });
+    check('NegSec: /caja/movimiento/ingreso con cocinero (sin caja_ver) → 403', movIngCoc.status === 403, `status=${movIngCoc.status}`);
+    const asiCoc = await raw('PATCH', '/resumenes/asignar-comprobante', { token: COCINERO, body: { facturaId: 999999, comprobanteId: 999999 } });
+    check('NegSec: /resumenes/asignar-comprobante con cocinero (sin resumenes:ver) → 403', asiCoc.status === 403, `status=${asiCoc.status}`);
+    const claCoc = await raw('PATCH', '/resumenes/clasificar-comprobante', { token: COCINERO, body: { comprobanteId: 999999, tipo: 'transferencia' } });
+    check('NegSec: /resumenes/clasificar-comprobante con cocinero (sin resumenes:ver) → 403', claCoc.status === 403, `status=${claCoc.status}`);
+  }
+  // ==== FIN BLOQUE SEGURIDAD-NEGOCIO ====
+
   // ============ LIMPIEZA DE DATOS DE PRUEBA ============
   // Borra el turno (y sus movimientos), la venta y el pedido creados por la
   // suite, para que cada corrida no acumule basura en :test. Solo si existen.
