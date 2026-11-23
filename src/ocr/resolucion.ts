@@ -36,17 +36,18 @@ export const MIN_BLUR = 20;
  * Varianza del Laplaciano (blur score) de una imagen vía sharp.
  * - Nítida  → bordes marcados → varianza ALTA.
  * - Borrosa → bordes suaves → varianza BAJA (tiende a 0).
- * Se normaliza la escala a ancho 800 px (sin ampliar) para que el umbral no
- * dependa del tamaño de la imagen (una foto 4000px borrosa también debe
- * salir baja). Devuelve -1 si no se puede medir (el caller no rechaza por
- * blur en ese caso: otras capas de coherencia lo protegen).
+ * Se normaliza la escala reduciendo SOLO las imágenes mayores de 800px de ancho
+ * (withoutEnlargement: true): las imágenes pequeñas se miden en su nitidez real
+ * sin ser estiradas, para no castigar documentos legítimos pequeños (bouchers
+ * 245×1280, capturas 200×200 nítidas). Devuelve -1 si no se puede medir (el
+ * caller no rechaza por blur en ese caso: el mínimo de píxeles lo protege).
  */
 export async function calcularBlur(ruta: string): Promise<number> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require('sharp');
     const { data } = await sharp(ruta)
-      .resize({ width: 800, withoutEnlargement: false })
+      .resize({ width: 800, withoutEnlargement: true })
       .grayscale()
       .convolve({
         width: 3,
