@@ -4,11 +4,15 @@ Mapa de qué verifica `smoke.mjs` hoy y qué falta para cubrir la app al 100%.
 Objetivo: que ENTES de cada bump/deploy la suite recorra toda la API en UNA
 corrida (sin datos sucios permanentes: los usuarios temporales se borran).
 
-## Estado actual: 22 checks (cubre las tandas de seguridad/permisos/DTOs/email)
+## Estado actual: 140 checks (seguridad/permisos/DTOs/email/auth/CRUD/caja/roles/calidad-OCR)
 
-Total endpoints en la app: **88** (13 módulos). La suite hoy toca ~22 casos
-clave, concentrados en seguridad y validación. Los flujos funcionales de NEGOCIO
-(CRUD facturas/ventas/pedidos/caja/carta/resúmenes) están **sin cubrir**.
+Total endpoints en la app: **88** (13 módulos). Fases cubiertas: 0 (seguridad/
+permisos/DTOs/OCR/usuarios), 1 (auth completo + tokens de servicio), 2
+(facturas/comprobantes CRUD+dedup+soft-delete), 3 (caja/pedidos/ventas),
+4 (resúmenes/gastos/roles/carta), 5A (calidad OCR blur — Capa 1: 7 casos
+calibrados con `decidirCalidad()` del módulo compilado + integración real
+subiendo una imagen borrosa con token de servicio). Falta: escaneo y permisos
+finos (resto de Fase 5).
 
 ---
 
