@@ -19,12 +19,18 @@ export interface Resolucion {
   tieneTexto: boolean;
 }
 
-/** Umbral mínimo de píxeles para considerar un documento no-absurdo.
- *  Recalibrado 2026-11-23 (REPORTE-BUG-BLUR-PEQUENAS-FRONTERA): una nítida
- *  legítima 100×100 (10.000 px) y 120×150 (18.000 px) DEBEN pasar; solo los
- *  tamaños absurdos (40×40=1.600 px, 72×128=9.216 px no) se rechazan por
- *  tamaño. Por debajo de 6.400 px (~80×80) un icono/pegatina no es documento. */
-export const MIN_PIXELS_LEGIBLES = 6400; // ~80×80: por debajo = absurdo
+/** PISO REAL DE VIABILIDAD (REPORTE-PISO-REAL-384PX, decisión de negocio de Enrique):
+ *  El formato más pequeño de comprobante/factura real es un ticket de impresora
+ *  térmica POS: rollo 58 mm → zona real de impresión 48 mm → 384 px de ancho a
+ *  203 dpi (resolución nativa). Rollo de 80 mm → 72 mm → 576 px.
+ *  Regla dura: por debajo de ~384 px de ancho NO existe ningún documento físico.
+ *  EXCEPCIÓN tira larga (boucher de consignación/cajero): imágenes muy alargadas
+ *  (relación lado mayor/menor ≥ 2.5 y lado mayor ≥ 900 px) son legítimas aunque
+ *  el lado menor sea menor a 384 px (p. ej. 245×1280 de la batería real).
+ *  Verificado con fuentes Epson/Star Micronics (papel térmico POS). */
+export const MIN_ANCHO_VIABLE = 384;
+export const RELACION_TIRA_LARGA = 2.5;
+export const LADO_MAYOR_TIRA_LARGA = 900;
 
 /** Umbral de nitidez (varianza del Laplaciano normalizada a 800px).
  *  Calibrado 2026-11-22 con lote real IRCC en :test:
@@ -33,72 +39,40 @@ export const MIN_PIXELS_LEGIBLES = 6400; // ~80×80: por debajo = absurdo
  *  MIN_BLUR=20 deja margen 2× entre legibles (≥38) e ilegibles (≤9.5). */
 export const MIN_BLUR = 20;
 
-/** ── MIX CALIDAD-BLUR (REPORTE-CAPA1-CALIDAD-BLUR + BUG-BLUR-PEQUENAS + FRONTERA) ──
- *  Estrategia de niveles según el tamaño, para abarcar el máximo de casos:
- *  - Absurdo (< MIN_PIXELS_LEGIBLES): rechazar SIEMPRE por tamaño.
- *  - Ultra-pequeña (MIN_PIXELS_LEGIBLES..MIN_PIXELS_SIN_ESTIRADO): SOLO blur
- *    NATIVO ≥ MIN_BLUR_PEQUENA. Exenta del estirado: una nítida legítima de
- *    100×100 / 120×150 (nativo 790/780) pasa; su estirado cae (<60) pero es
- *    legítima (FRONTERA).
- *  - Pequeña (MIN_PIXELS_SIN_ESTIRADO..MIN_PIXELS_PEQUENA): blur NATIVO ≥
- *    MIN_BLUR_PEQUENA Y blur ESTIRADO a 400px ≥ MIN_BLUR_ESTIRADO — la
- *    reducción ilegible 150×150 (22.500 px, no exenta) se cae al estirar
- *    (34.8 < 45) mientras la nítida 180×240 (60.3) y 200×200 (91.6) pasan.
- *  - Grande (>= MIN_PIXELS_PEQUENA): blur NATIVO ≥ MIN_BLUR.
- *  Calibrado con lote real en :test (2026-11-23). */
-export const MIN_PIXELS_SIN_ESTIRADO = 22500; // ~150×150: por debajo → solo nativo
-export const MIN_PIXELS_PEQUENA = 150000;     // ~390×390: por debajo → exigir nitidez fina
-export const MIN_BLUR_PEQUENA = 650;          // 978 (200×200 nítida) vs 519 (35% ilegible) vs 404 (25%)
-export const MIN_BLUR_ESTIRADO = 45;          // estirado 400px: 34.8 (150×150 ilegible) vs 60.3 (180×240 nítida)
-export const ANCHO_ESTIRADO = 400;            // normalización del blur estirado en pequeñas
-
 export interface DecisionCalidad {
   rechazar: boolean;
   motivo: string;
 }
 
 /**
- * Decisión pura de la Capa 1 (REPORTE-CAPA1-CALIDAD-BLUR + BUG-BLUR-PEQUENAS
- * + BUG-BLUR-PEQUENAS-FRONTERA):
- * - Absurdo (< MIN_PIXELS_LEGIBLES) → rechazar SIEMPRE.
- * - Ultra-pequeña (MIN_PIXELS_LEGIBLES..MIN_PIXELS_SIN_ESTIRADO): SOLO blur
- *   nativo >= MIN_BLUR_PEQUENA (exenta del estirado: nítidas 100×100/120×150
- *   pasan; las reducciones ilegibles de ese tamaño son raras y el nativo ya
- *   filtra las borrosas).
- * - Pequeña (MIN_PIXELS_SIN_ESTIRADO..MIN_PIXELS_PEQUENA): nativo >=
- *   MIN_BLUR_PEQUENA Y estirado (400px) >= MIN_BLUR_ESTIRADO — la reducción
- *   ilegible 150×150 se ve "nítida" nativa pero se cae al ampliarla.
- * - Grande (>= MIN_PIXELS_PEQUENA): nativo >= MIN_BLUR.
- * `blurEstirado` puede pasarse -1 si no se midió (no se exige).
+ * Decisión pura de la Capa 1 (REPORTE-PISO-REAL-384PX — piso real por ancho):
+ * - Imagen con lado menor < 384 px (y no es tira larga legítima) → RECHAZAR
+ *   "tamaño no viable" (no existe ningún documento contable físico así).
+ * - Tira larga legítima (boucher 245×1280) → pasa el piso, se evalúa blur.
+ * - blur NATIVO >= MIN_BLUR (20) → ACEPTAR; si no → "borrosa/ilegible".
+ * No hay más niveles ni doble medición: el piso físico elimina los rangos
+ * irreales que la calibración empírica intentaba (y no podía) resolver.
  * Separada del controller para poder testearla en la suite e2e sin IA.
  */
 export function decidirCalidad(
   dims: DimensionesImg,
   blur: number,
-  blurEstirado = -1,
 ): DecisionCalidad {
-  const absurdo = dims.pixels > 0 && dims.pixels < MIN_PIXELS_LEGIBLES;
-  if (absurdo)
-    return { rechazar: true, motivo: 'tamaño absurdo (no es documento)' };
-  const pequena = dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA;
-  const umbral = pequena ? MIN_BLUR_PEQUENA : MIN_BLUR;
-  const borrosa = blur >= 0 && blur < umbral;
-  if (borrosa)
-    return {
-      rechazar: true,
-      motivo: pequena ? 'pequeña insuficientemente nítida' : 'borrosa',
-    };
-  // Estirado solo en el rango SIN_ESTIRADO..PEQUENA (las ultra-pequeñas nítidas
-  // legítimas quedan exentas: su estirado cae por la ampliación, no por ser ilegibles).
-  const exigeEstirado =
-    dims.pixels > 0 &&
-    dims.pixels >= MIN_PIXELS_SIN_ESTIRADO &&
-    dims.pixels < MIN_PIXELS_PEQUENA;
-  if (exigeEstirado && blurEstirado >= 0 && blurEstirado < MIN_BLUR_ESTIRADO) {
-    return {
-      rechazar: true,
-      motivo: 'reducción ilegible (no resiste la ampliación)',
-    };
+  if (dims.width > 0 && dims.height > 0) {
+    const ladoMenor = Math.min(dims.width, dims.height);
+    const ladoMayor = Math.max(dims.width, dims.height);
+    const esTiraLarga =
+      ladoMayor / ladoMenor >= RELACION_TIRA_LARGA &&
+      ladoMayor >= LADO_MAYOR_TIRA_LARGA;
+    if (ladoMenor < MIN_ANCHO_VIABLE && !esTiraLarga) {
+      return {
+        rechazar: true,
+        motivo: `tamaño no viable (<${MIN_ANCHO_VIABLE}px)`,
+      };
+    }
+  }
+  if (blur >= 0 && blur < MIN_BLUR) {
+    return { rechazar: true, motivo: 'borrosa/ilegible' };
   }
   return { rechazar: false, motivo: 'aceptada' };
 }
@@ -107,26 +81,16 @@ export function decidirCalidad(
  * Varianza del Laplaciano (blur score) de una imagen vía sharp.
  * - Nítida  → bordes marcados → varianza ALTA.
  * - Borrosa → bordes suaves → varianza BAJA (tiende a 0).
- *
- * `withEnlargement` (false por defecto) controla la normalización de escala:
- * - false (nativo): reduce solo las mayores de 800px; las pequeñas se miden en
- *   su nitidez real (no se castigan documentos legítimos pequeños: bouchers
- *   245×1280, capturas nítidas de proporciones raras).
- * - true (normalizado): estira todas a 800px; las imágenes pequeñas se suavizan
- *   al estirarse y su score cae → detecta reducciones ilegibles (180×320 da 2.4,
- *   aunque en nativo dé 404). Se usa como criterio adicional en imágenes pequeñas.
+ * Se normaliza reduciendo solo las imágenes mayores de 800px de ancho
+ * (withoutEnlargement): las imágenes más pequeñas se miden en su nitidez real.
  * Devuelve -1 si no se puede medir (el caller no rechaza por blur en ese caso).
  */
-export async function calcularBlur(
-  ruta: string,
-  withEnlargement = false,
-  ancho = 800,
-): Promise<number> {
+export async function calcularBlur(ruta: string): Promise<number> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require('sharp');
     const { data } = await sharp(ruta)
-      .resize({ width: ancho, withoutEnlargement: !withEnlargement })
+      .resize({ width: 800, withoutEnlargement: true })
       .grayscale()
       .convolve({
         width: 3,
