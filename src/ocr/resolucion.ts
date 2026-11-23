@@ -46,6 +46,36 @@ export const MIN_BLUR = 20;
 export const MIN_PIXELS_PEQUENA = 150000; // ~390×390: por debajo → exigir nitidez fina
 export const MIN_BLUR_PEQUENA = 650;      // 978 (200×200 nítida) vs 519 (35% ilegible) vs 404 (25%)
 
+export interface DecisionCalidad {
+  rechazar: boolean;
+  motivo: string;
+}
+
+/**
+ * Decisión pura de la Capa 1 (REPORTE-CAPA1-CALIDAD-BLUR, mix):
+ * - Tamaño absurdo (< MIN_PIXELS_ABSURDOS) → rechazar.
+ * - Grande (>= MIN_PIXELS_PEQUENA): blur nativo >= MIN_BLUR.
+ * - Pequeña (< MIN_PIXELS_PEQUENA): blur nativo >= MIN_BLUR_PEQUENA
+ *   (una reducción ilegible se ve "nítida" a su escala pero no es legible).
+ * Separada del controller para poder testearla en la suite e2e sin IA.
+ */
+export function decidirCalidad(
+  dims: DimensionesImg,
+  blur: number,
+): DecisionCalidad {
+  const tamAbsurdo = dims.pixels > 0 && dims.pixels < MIN_PIXELS_ABSURDOS;
+  const pequena = dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA;
+  const umbral = pequena ? MIN_BLUR_PEQUENA : MIN_BLUR;
+  const borrosa = blur >= 0 && blur < umbral;
+  if (tamAbsurdo) return { rechazar: true, motivo: 'tamaño absurdo' };
+  if (borrosa)
+    return {
+      rechazar: true,
+      motivo: pequena ? 'pequeña insuficientemente nítida' : 'borrosa',
+    };
+  return { rechazar: false, motivo: 'aceptada' };
+}
+
 /**
  * Varianza del Laplaciano (blur score) de una imagen vía sharp.
  * - Nítida  → bordes marcados → varianza ALTA.

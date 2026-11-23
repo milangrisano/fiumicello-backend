@@ -24,10 +24,7 @@ import {
   motivoMejor,
   medirImagen,
   calcularBlur,
-  MIN_PIXELS_ABSURDOS,
-  MIN_BLUR,
-  MIN_PIXELS_PEQUENA,
-  MIN_BLUR_PEQUENA,
+  decidirCalidad,
 } from './resolucion';
 
 /**
@@ -100,18 +97,6 @@ export class OcrController {
     const rutaOriginal = file.path;
     const buffer = fs.readFileSync(rutaOriginal);
 
-    let resultado: Awaited<ReturnType<OcrService['extractText']>>;
-    try {
-      resultado = await this.ocr.extractText(buffer, file.mimetype);
-    } catch (e) {
-      fs.rmSync(rutaOriginal, { force: true });
-      this.logger.error('OCR error', e as any);
-      return {
-        ok: false,
-        error: 'No se pudo leer la imagen (visión IA). Trata de nuevo.',
-      };
-    }
-
     // ── CAPA 1: rechazo por CALIDAD (desenfoque) — MIX (REPORTE-CAPA1-CALIDAD-BLUR) ──
     // El criterio real de legibilidad no es el tamaño (los documentos contables
     // tienen mil proporciones legítimas: bouchers 245×1280, capturas largas),
@@ -123,25 +108,34 @@ export class OcrController {
     //     una reducción ilegible (25%/35%) se ve "nítida" a su escala pero no
     //     es legible; una captura nítida pequeña (200×200) da blur mucho mayor.
     // Se mantiene un mínimo absoluto de píxeles para tamaños absurdos.
+    // Se ejecuta ANTES del OCR (no se gastan tokens en una imagen ilegible).
     // Aplica a imágenes (no a PDFs, que llevan capa/tamaño de página suficiente).
     if (file.mimetype && !String(file.mimetype).toLowerCase().includes('pdf')) {
       const dims = await medirImagen(rutaOriginal);
       const blur = await calcularBlur(rutaOriginal); // nativo (sin estirar)
-      const tamAbsurdo =
-        dims.pixels > 0 && dims.pixels < MIN_PIXELS_ABSURDOS;
-      const pequena = dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA;
-      const umbral = pequena ? MIN_BLUR_PEQUENA : MIN_BLUR;
-      const borrosa = blur >= 0 && blur < umbral;
-      if (tamAbsurdo || borrosa) {
+      const decision = decidirCalidad(dims, blur);
+      if (decision.rechazar) {
         fs.rmSync(rutaOriginal, { force: true }); // no dejar residuo del temporal
         this.logger.warn(
-          `OCR rechazado por calidad: ${file.originalname} (${dims.width}×${dims.height}, ${dims.pixels}px, blur=${blur.toFixed(1)}, umbral=${umbral}, ${tamAbsurdo ? 'tamaño absurdo' : pequena ? 'pequeña insuficientemente nítida' : 'borrosa'})`);
+          `OCR rechazado por calidad: ${file.originalname} (${dims.width}×${dims.height}, ${dims.pixels}px, blur=${blur.toFixed(1)}, motivo=${decision.motivo})`);
         return {
           ok: false,
           error:
             'Imagen de muy baja resolución/ilegible. Reenvía el documento en mayor resolución.',
         };
       }
+    }
+
+    let resultado: Awaited<ReturnType<OcrService['extractText']>>;
+    try {
+      resultado = await this.ocr.extractText(buffer, file.mimetype);
+    } catch (e) {
+      fs.rmSync(rutaOriginal, { force: true });
+      this.logger.error('OCR error', e as any);
+      return {
+        ok: false,
+        error: 'No se pudo leer la imagen (visión IA). Trata de nuevo.',
+      };
     }
 
     // Mover la imagen a su subcarpeta según el tipo detectado, con el nombre

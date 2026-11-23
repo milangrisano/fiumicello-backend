@@ -172,6 +172,54 @@ async function main() {
   const ocrHuman = await raw('POST', '/ocr/subir', { token: ADMIN });
   check('POST /ocr/subir con JWT admin → 403 (blindaje)', ocrHuman.status === 403, `status=${ocrHuman.status}`);
 
+  // ============ FASE 5A: CALIDAD OCR (blur / Capa 1) — REPORTE-CAPA1-CALIDAD-BLUR ============
+  // Prueba la función pura decidirCalidad() del código COMPILADO en el contenedor
+  // (sin gastar IA) con los casos calibrados en :test + 1 check de integración real.
+  console.log('\n── FASE 5A: CALIDAD OCR (blur) ──');
+  {
+    const resolucion = await import('/app/dist/ocr/resolucion.js');
+    // Casos calibrados (blur NATIVO sin estirar medido sobre el lote real):
+    // grandes (>=150k px): boucher 245×1280 (313.600px, blur 1057) y 50% (230.400px, blur 588)
+    // pequeñas (<150k px): 200×200 nítida (40.000px, blur 978) vs reducciones ilegibles 35% (112.896px, blur 519) y 25% (57.600px, blur 404)
+    // absurdo: 72×128 (9.216px) → rechaza por tamaño
+    // borrosa grande: 900×1200 (1.080.000px, blur 0.1) → rechaza
+    const casos = [
+      // nombre, dims {width,height,pixels}, blur, esperado (false=acepta, true=rechaza)
+      ['boucher 245×1280 nítido (grande) acepta', { width: 245, height: 1280, pixels: 313600 }, 1057.5, false],
+      ['50% 360×640 legible (grande) acepta', { width: 360, height: 640, pixels: 230400 }, 588.4, false],
+      ['200×200 nítida (pequeña) acepta', { width: 200, height: 200, pixels: 40000 }, 977.9, false],
+      ['borrosa grande 900×1200 rechaza', { width: 900, height: 1200, pixels: 1080000 }, 0.1, true],
+      ['35% 252×448 ilegible (pequeña) rechaza', { width: 252, height: 448, pixels: 112896 }, 518.8, true],
+      ['25% 180×320 ilegible (pequeña) rechaza', { width: 180, height: 320, pixels: 57600 }, 403.9, true],
+      ['72×128 absurdo rechaza por tamaño', { width: 72, height: 128, pixels: 9216 }, 1338.4, true],
+    ];
+    for (const [nombre, dims, blur, esperado] of casos) {
+      const d = resolucion.decidirCalidad(dims, blur);
+      check(`Capa1 ${nombre}`, d.rechazar === esperado, `rechazar=${d.rechazar} motivo=${d.motivo}`);
+    }
+
+    // Check de integración real: subir imagen BORROSA grande por API con token de
+    // servicio → la Capa 1 la rechaza ANTES del OCR (no gasta IA) con ok:false.
+    // El token de servicio solo se ve una vez al crearlo (en BD está hasheado).
+    const createSvcBlur = await raw('POST', '/auth/servicios', { token: ADMIN, body: { nombre: `smoke_ocr_blur_${Date.now()}` } });
+    const svcToken = createSvcBlur.data?.token || null;
+    // Imagen borrosa grande: la generamos con sharp (resuelto desde /app del contenedor)
+    const sharpFn = (await import('sharp')).default;
+    const svgBorrosa = `<svg width="900" height="1200" xmlns="http://www.w3.org/2000/svg"><rect width="900" height="1200" fill="white"/><text x="50" y="120" font-family="monospace" font-size="60" fill="black">FACTURA 9001</text><text x="50" y="240" font-family="monospace" font-size="50" fill="black">TOTAL: $999,999</text></svg>`;
+    const bufBorrosa = await sharpFn(Buffer.from(svgBorrosa)).blur(40).jpeg().toBuffer();
+    const fd = new FormData();
+    fd.append('archivo', new Blob([bufBorrosa], { type: 'image/jpeg' }), 'borrosa_e2e.jpg');
+    let blurRes = null;
+    try {
+      const res = await fetch(`${BASE}/ocr/subir`, { method: 'POST', headers: { Authorization: `Bearer ${svcToken}` }, body: fd });
+      blurRes = { status: res.status, data: await res.json().catch(() => ({})) };
+    } catch (e) {
+      blurRes = { status: 0, data: { error: String(e) } };
+    }
+    check('Capa1 integración: subir borrosa → ok:false ilegible', blurRes?.status === 201 && blurRes.data?.ok === false && String(blurRes.data?.error || '').includes('baja resolución'), `status=${blurRes?.status} data=${JSON.stringify(blurRes?.data)}`);
+    if (createSvcBlur.data?.id) { try { psql(`DELETE FROM servicios WHERE id=${createSvcBlur.data.id};`); } catch {} }
+  }
+
   // ============ DESACTIVAR / REACTIVAR ============
   console.log('\n── DESACTIVAR/REACTIVAR ──');
   const idCocinero = psql(`SELECT id FROM usuarios WHERE email='${TEST_EMAIL}';`);
