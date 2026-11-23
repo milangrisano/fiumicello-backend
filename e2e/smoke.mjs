@@ -868,6 +868,255 @@ async function main() {
     check('PATCH clasificar-comprobante con id inexistente → 200 con ok:false', cla.status === 200 && cla.data?.ok === false, `status=${cla.status} ok=${cla.data?.ok}`);
   }
 
+  // ============ ESCANEO: PREVISUALIZAR (determinista, sharp local) ============
+  console.log('\n── ESCANEO: PREVISUALIZAR ──');
+  {
+    const createSvcEsc = await raw('POST', '/auth/servicios', { token: ADMIN, body: { nombre: `smoke_escaneo_${Date.now()}` } });
+    check('Escaneo PREV: POST /auth/servicios → 201 + token', createSvcEsc.status === 201 && !!createSvcEsc.data?.token, `status=${createSvcEsc.status}`);
+    const SVC_ESC = createSvcEsc.data?.token;
+    const svcEscId = createSvcEsc.data?.id;
+    const sharpE = (await import('sharp')).default;
+    const svgPreview = `<svg width="800" height="1000" xmlns="http://www.w3.org/2000/svg"><rect width="800" height="1000" fill="white"/><text x="50" y="120" font-family="monospace" font-size="48" fill="black">FACTURA PREVIEW ${Date.now()}</text><text x="50" y="200" font-family="monospace" font-size="40" fill="black">PROVEEDOR: SMOKE TEST</text><text x="50" y="280" font-family="monospace" font-size="40" fill="black">TOTAL: $123,456</text></svg>`;
+    const bufPreview = await sharpE(Buffer.from(svgPreview)).jpeg({ quality: 90 }).toBuffer();
+    const fdPrev = new FormData();
+    fdPrev.append('archivo', new Blob([bufPreview], { type: 'image/jpeg' }), 'preview_test.jpg');
+    let prevRes = null;
+    try {
+      const res = await fetch(`${BASE}/escaneo/previsualizar`, { method: 'POST', headers: { Authorization: `Bearer ${SVC_ESC}` }, body: fdPrev });
+      prevRes = { status: res.status, data: await res.json().catch(() => ({})) };
+    } catch (e) { prevRes = { status: 0, data: { error: String(e) } }; }
+    check('Escaneo PREV: /escaneo/previsualizar (servicio) → 201 ok:true + preview', prevRes?.status === 201 && prevRes.data?.ok === true && !!prevRes.data?.preview_b64, `status=${prevRes?.status} ok=${prevRes?.data?.ok} hasPreview=${!!prevRes?.data?.preview_b64}`);
+    check('Escaneo PREV: devuelve id + width/height + img_orig', prevRes?.data?.id && typeof prevRes.data.width === 'number' && typeof prevRes.data.img_orig_w === 'number', `data=${JSON.stringify(prevRes?.data)}`);
+    const fdPrev2 = new FormData();
+    fdPrev2.append('archivo', new Blob([bufPreview], { type: 'image/jpeg' }), 'preview_test2.jpg');
+    let prevRes2 = null;
+    try {
+      const res = await fetch(`${BASE}/escaneo/previsualizar`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN}` }, body: fdPrev2 });
+      prevRes2 = { status: res.status, data: await res.json().catch(() => ({})) };
+    } catch (e) { prevRes2 = { status: 0, data: { error: String(e) } }; }
+    check('Escaneo PREV: /escaneo/previsualizar (JWT admin) → 201 ok:true', prevRes2?.status === 201 && prevRes2.data?.ok === true, `status=${prevRes2?.status} ok=${prevRes2?.data?.ok}`);
+    if (svcEscId) { try { psql(`DELETE FROM servicios WHERE id=${svcEscId};`); } catch {} }
+  }
+
+  // ============ ESCANEO: CONFIRMAR — SOLO VALIDACIONES DETERMINISTAS ============
+  console.log('\n── ESCANEO: CONFIRMAR (validaciones) ──');
+  {
+    const confirmBadId = await raw('POST', '/escaneo/confirmar', { token: ADMIN, body: { id: 'noexiste123', tipo: 'factura', fecha: '2026-11-23', referencia: 'X', proveedor: 'Y', total: 100 } });
+    check('Escaneo CONF: id inexistente → 404', confirmBadId.status === 404, `status=${confirmBadId.status}`);
+    const confirmExtra = await raw('POST', '/escaneo/confirmar', { token: ADMIN, body: { id: 'dummy', tipo: 'factura', fecha: '2026-11-23', referencia: 'X', proveedor: 'Y', total: 100, campo_extra: 'hack' } });
+    check('Escaneo CONF: id inexistente (vence antes que DTO) → 404', confirmExtra.status === 404, `status=${confirmExtra.status}`);
+    // //PENDIENTE-IA: éxito completo de confirmar llama IA (flaky) — omitido
+  }
+
+  // ============ PEDIDOS: COCINA — TRANSICIONES COMPLETAS ============
+  console.log('\n── PEDIDOS: COCINA (transiciones) ──');
+  {
+    const cartaC = await raw('GET', '/carta', { token: ADMIN });
+    let idProdC = 48;
+    if (cartaC.status === 200 && cartaC.data?.categorias) {
+      const todos = [];
+      for (const c of cartaC.data.categorias) { if (Array.isArray(c.items)) todos.push(...c.items); }
+      if (todos.length) idProdC = todos[0].id || 48;
+    }
+    const mesaC = `COC-${Date.now() % 10000}`;
+    const crearCoc = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'mesa', numero_mesa: mesaC, items: [{ id_producto: idProdC, cantidad: 2 }] } });
+    check('Cocina: POST /pedidos → 201', crearCoc.status === 201, `status=${crearCoc.status}`);
+    const pedCocId = crearCoc.data?.id;
+    check('Cocina: pedido con id', !!pedCocId, `id=${pedCocId}`);
+    if (pedCocId) {
+      const pedInit = await raw('GET', `/pedidos/${pedCocId}`, { token: ADMIN });
+      check('Cocina: estado_cocina inicial = recibida', pedInit.data?.estado_cocina === 'recibida', `estado=${pedInit.data?.estado_cocina}`);
+      const aPrep = await raw('POST', `/pedidos/${pedCocId}/cocina`, { token: ADMIN, body: { estado_cocina: 'preparando' } });
+      check('Cocina: recibida → preparando → 201', aPrep.status === 201 && aPrep.data?.estado_cocina === 'preparando', `status=${aPrep.status} estado=${aPrep.data?.estado_cocina}`);
+      const aLista = await raw('POST', `/pedidos/${pedCocId}/cocina`, { token: ADMIN, body: { estado_cocina: 'lista' } });
+      check('Cocina: preparando → lista → 201', aLista.status === 201 && aLista.data?.estado_cocina === 'lista', `status=${aLista.status} estado=${aLista.data?.estado_cocina}`);
+      const aRet = await raw('POST', `/pedidos/${pedCocId}/cocina`, { token: ADMIN, body: { estado_cocina: 'retirada' } });
+      check('Cocina: lista → retirada → 201', aRet.status === 201 && aRet.data?.estado_cocina === 'retirada', `status=${aRet.status} estado=${aRet.data?.estado_cocina}`);
+      const aInv = await raw('POST', `/pedidos/${pedCocId}/cocina`, { token: ADMIN, body: { estado_cocina: 'loco' } });
+      check('Cocina: estado inválido → 400', aInv.status === 400, `status=${aInv.status}`);
+      psql(`DELETE FROM pedido_items WHERE id_pedido=${pedCocId}; DELETE FROM pedidos WHERE id=${pedCocId};`);
+    }
+  }
+
+  // ============ PEDIDOS: ENTREGAR (para_llevar/domicilio) ============
+  console.log('\n── PEDIDOS: ENTREGAR ──');
+  {
+    const cartaE2 = await raw('GET', '/carta', { token: ADMIN });
+    let idProdE2 = 48;
+    if (cartaE2.status === 200 && cartaE2.data?.categorias) {
+      const todos = [];
+      for (const c of cartaE2.data.categorias) { if (Array.isArray(c.items)) todos.push(...c.items); }
+      if (todos.length) idProdE2 = todos[0].id || 48;
+    }
+    const crearEnt = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: 'CLIENTE ENTREGA', items: [{ id_producto: idProdE2, cantidad: 1 }] } });
+    check('Entregar: POST /pedidos (para_llevar) → 201', crearEnt.status === 201, `status=${crearEnt.status}`);
+    const pedEntId = crearEnt.data?.id;
+    check('Entregar: pedido con id', !!pedEntId, `id=${pedEntId}`);
+    if (pedEntId) {
+      let tAct = await raw('GET', '/caja/activo', { token: ADMIN });
+      let tId = tAct.data?.id;
+      if (!tId) { const abrirT = await raw('POST', '/caja/abrir', { token: ADMIN, body: { efectivo_inicial: 100000 } }); tId = abrirT.data?.id; }
+      const formasE2 = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+      let formaE2 = null;
+      if (Array.isArray(formasE2.data)) { const act = formasE2.data.find(f => f.activo === true); formaE2 = act ? act.id : null; }
+      const cobrarE2 = await raw('POST', `/pedidos/${pedEntId}/cobrar`, { token: ADMIN, body: { id_forma_pago: formaE2 } });
+      check('Entregar: cobrar (para_llevar) → 201', cobrarE2.status === 201, `status=${cobrarE2.status}`);
+      const entregarE2 = await raw('POST', `/pedidos/${pedEntId}/entregar`, { token: ADMIN });
+      check('Entregar: POST /pedidos/:id/entregar → 201/200', entregarE2.status === 201 || entregarE2.status === 200, `status=${entregarE2.status}`);
+      const pedFin = await raw('GET', `/pedidos/${pedEntId}`, { token: ADMIN });
+      check('Entregar: estado final = entregada', pedFin.data?.estado === 'entregada', `estado=${pedFin.data?.estado}`);
+      psql(`DELETE FROM pedido_items WHERE id_pedido=${pedEntId}; DELETE FROM pedidos WHERE id=${pedEntId};`);
+    }
+  }
+  // ==== FIN BLOQUE ESCANEO-OCR-COCINA ====
+
+  // ============ NEGOCIO A: ANULACIÓN DE PEDIDOS ============
+  console.log('\n── ANULACIÓN DE PEDIDOS ──');
+  {
+    let pedIdA = null, pedIdA2 = null, pedIdA3 = null;
+    try {
+      const cartaA = await raw('GET', '/carta', { token: ADMIN });
+      let idProdA = 48;
+      if (cartaA.status === 200 && cartaA.data?.categorias) { const toda=[]; for (const c of cartaA.data.categorias) if (Array.isArray(c.items)) toda.push(...c.items); if (toda.length) idProdA=toda[0].id||48; }
+      const tsA = Date.now();
+      const crearPedA = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'mesa', numero_mesa: `A-${tsA}`, items: [{ id_producto: idProdA, cantidad: 2 }] } });
+      check('Anular: POST /pedidos → 201', crearPedA.status === 201, `status=${crearPedA.status}`);
+      pedIdA = crearPedA.data?.id;
+      check('Anular: pedido con id', !!pedIdA, `id=${pedIdA}`);
+      const solA = await raw('POST', `/pedidos/${pedIdA}/solicitar-anulacion`, { token: ADMIN, body: { motivo: 'Cliente se fue sin pagar - prueba smoke' } });
+      check('Anular: solicitar-anulacion → 201 ok:true', solA.status === 201 && solA.data?.ok === true, `status=${solA.status} data=${JSON.stringify(solA.data)}`);
+      const mBD = psql(`SELECT motivo_anulacion FROM pedidos WHERE id=${pedIdA};`);
+      check('Anular: motivo persistido en BD', String(mBD||'').includes('Cliente se fue'), `motivo=${mBD}`);
+      const aprobA = await raw('POST', `/pedidos/${pedIdA}/anular`, { token: ADMIN, body: { password: ADMIN_PASS } });
+      check('Anular: aprobar password correcta → 201', aprobA.status === 201, `status=${aprobA.status}`);
+      check('Anular: estado = anulada', aprobA.data?.estado === 'anulada', `estado=${aprobA.data?.estado}`);
+      const pedA2 = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'mesa', numero_mesa: `A2-${tsA}`, items: [{ id_producto: idProdA, cantidad: 1 }] } });
+      pedIdA2 = pedA2.data?.id;
+      await raw('POST', `/pedidos/${pedIdA2}/solicitar-anulacion`, { token: ADMIN, body: { motivo: 'test pass mala' } });
+      const malPass = await raw('POST', `/pedidos/${pedIdA2}/anular`, { token: ADMIN, body: { password: 'Clave-Incorrecta-123' } });
+      check('Anular: password inválida → 401', malPass.status === 401, `status=${malPass.status}`);
+      const solDup = await raw('POST', `/pedidos/${pedIdA}/solicitar-anulacion`, { token: ADMIN, body: { motivo: 'dup' } });
+      check('Anular: solicitar en pedido anulada → 400', solDup.status === 400, `status=${solDup.status}`);
+      const aprobDup = await raw('POST', `/pedidos/${pedIdA}/anular`, { token: ADMIN, body: { password: ADMIN_PASS } });
+      check('Anular: aprobar en pedido anulada → 400', aprobDup.status === 400, `status=${aprobDup.status}`);
+      const loginCocA = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+      const COC_A = loginCocA.data?.access_token;
+      const pedA3 = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'mesa', numero_mesa: `A3-${tsA}`, items: [{ id_producto: idProdA, cantidad: 1 }] } });
+      pedIdA3 = pedA3.data?.id;
+      await raw('POST', `/pedidos/${pedIdA3}/solicitar-anulacion`, { token: ADMIN, body: { motivo: 'test 403' } });
+      const sinPerm = await raw('POST', `/pedidos/${pedIdA3}/anular`, { token: COC_A, body: { password: TEST_PASS } });
+      check('Anular: aprobar con cocinero (sin permiso) → 403', sinPerm.status === 403, `status=${sinPerm.status}`);
+    } finally {
+      for (const id of [pedIdA, pedIdA2, pedIdA3]) { if (id) { try { psql(`DELETE FROM pedido_items WHERE id_pedido=${id}; DELETE FROM pedidos WHERE id=${id};`); } catch {} } }
+    }
+  }
+  // ==== FIN BLOQUE NEGOCIO A ====
+  // ============ NEGOCIO B: VENTAS (anular/borrado) + PROPINAS ============
+  console.log('\n── VENTAS anular/borrar + PROPINAS ──');
+  {
+    let ventIdB = null, ventIdB2 = null, fpIdB = null, propIdB = null;
+    try {
+      const cartaB = await raw('GET', '/carta', { token: ADMIN });
+      let idProdB = 48;
+      if (cartaB.status === 200 && cartaB.data?.categorias) { const toda=[]; for (const c of cartaB.data.categorias) if (Array.isArray(c.items)) toda.push(...c.items); if (toda.length) idProdB=toda[0].id||48; }
+      const tsB = Date.now();
+      const cV = await raw('POST', '/ventas', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: `VENTA-SMOKE-${tsB}`, items: [{ id_producto: idProdB, cantidad: 2 }] } });
+      check('Ventas: POST /ventas → 201', cV.status === 201, `status=${cV.status}`);
+      ventIdB = cV.data?.id;
+      check('Ventas: venta con id', !!ventIdB, `id=${ventIdB}`);
+      const gV = await raw('GET', `/ventas/${ventIdB}`, { token: ADMIN });
+      check('Ventas: GET /ventas/:id → 200', gV.status === 200, `status=${gV.status}`);
+      check('Ventas: items array presente', Array.isArray(gV.data?.items), `items=${Array.isArray(gV.data?.items)}`);
+      const aV = await raw('PATCH', `/ventas/${ventIdB}/anular`, { token: ADMIN, body: { motivo: 'Error en comanda - prueba smoke' } });
+      check('Ventas: anular → 200', aV.status === 200, `status=${aV.status}`);
+      check('Ventas: anulada=true', aV.data?.anulada === true, `anulada=${aV.data?.anulada}`);
+      const aV2 = await raw('PATCH', `/ventas/${ventIdB}/anular`, { token: ADMIN, body: { motivo: 'dup' } });
+      check('Ventas: anular ya anulada → 400', aV2.status === 400, `status=${aV2.status}`);
+      const dV = await raw('DELETE', `/ventas/${ventIdB}`, { token: ADMIN });
+      check('Ventas: DELETE (superadmin) → 200 ok:true', dV.status === 200 && dV.data?.ok === true, `status=${dV.status} data=${JSON.stringify(dV.data)}`);
+      const cV2 = await raw('POST', '/ventas', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: `VENTA-SMOKE2-${tsB}`, items: [{ id_producto: idProdB, cantidad: 1 }] } });
+      ventIdB2 = cV2.data?.id;
+      const lCocB = await loginConBackoff(TEST_EMAIL, TEST_PASS);
+      const dNS = await raw('DELETE', `/ventas/${ventIdB2}`, { token: lCocB.data?.access_token });
+      check('Ventas: DELETE con no-superadmin → 403', dNS.status === 403, `status=${dNS.status}`);
+      // Formas de pago delete
+      const cFp = await raw('POST', '/ventas/formas-pago', { token: ADMIN, body: { nombre: `FP-SMOKE-${tsB}` } });
+      check('Ventas FP: POST formas-pago → 201', cFp.status === 201, `status=${cFp.status}`);
+      fpIdB = cFp.data?.id;
+      const dFp = await raw('DELETE', `/ventas/formas-pago/${fpIdB}`, { token: ADMIN });
+      check('Ventas FP: DELETE formas-pago/:id → 200 ok', dFp.status === 200 && dFp.data?.ok === true, `status=${dFp.status} data=${JSON.stringify(dFp.data)}`);
+      // Propinas
+      const hoyB = new Date().toISOString().slice(0, 10);
+      const pP = await raw('POST', '/caja/propina/pago', { token: ADMIN, body: { fecha_pago: hoyB, monto_efectivo: 50000, monto_otros: 20000, notas: 'Prueba smoke propina' } });
+      check('Propina: POST /caja/propina/pago → 201', pP.status === 201, `status=${pP.status}`);
+      propIdB = pP.data?.id;
+      check('Propina: respuesta con id y montos', !!pP.data?.id && Number(pP.data?.monto_efectivo) === 50000, `data=${JSON.stringify(pP.data)}`);
+      const lP = await raw('GET', '/caja/propina/pagos', { token: ADMIN });
+      check('Propina: GET /caja/propina/pagos → 200 array', lP.status === 200 && Array.isArray(lP.data), `status=${lP.status}`);
+      check('Propina: pago creado aparece en listado', Array.isArray(lP.data) && lP.data.some(p => p.id === propIdB), `encontrado=${Array.isArray(lP.data)}`);
+    } finally {
+      if (ventIdB) { try { psql(`DELETE FROM venta_items WHERE id_venta=${ventIdB}; DELETE FROM ventas WHERE id=${ventIdB};`); } catch {} }
+      if (ventIdB2) { try { psql(`DELETE FROM venta_items WHERE id_venta=${ventIdB2}; DELETE FROM ventas WHERE id=${ventIdB2};`); } catch {} }
+      if (fpIdB) { try { psql(`DELETE FROM formas_pago WHERE id=${fpIdB};`); } catch {} }
+      if (propIdB) { try { psql(`DELETE FROM pagos_propina WHERE id=${propIdB};`); } catch {} }
+    }
+  }
+  // ==== FIN BLOQUE NEGOCIO B ====
+  // ============ NEGOCIO C: CARTA ADMIN + RESÚMENES POSITIVOS ============
+  console.log('\n── CARTA ADMIN + RESÚMENES POSITIVOS ──');
+  {
+    let catIdC = null, itemIdC = null, factIdC = null, compIdC = null;
+    try {
+      const aCart = await raw('GET', '/carta/administracion', { token: ADMIN });
+      check('Carta admin: GET /carta/administracion → 200', aCart.status === 200, `status=${aCart.status}`);
+      check('Carta admin: categorias array', Array.isArray(aCart.data?.categorias), `cats=${Array.isArray(aCart.data?.categorias)}`);
+      const tsC = Date.now();
+      const cCat = await raw('POST', '/carta/categorias', { token: ADMIN, body: { nombre: `CAT-SMOKE-${tsC}`, orden: 99 } });
+      check('Carta admin: POST categorias → 201', cCat.status === 201, `status=${cCat.status}`);
+      catIdC = cCat.data?.id;
+      const uCat = await raw('PUT', `/carta/categorias/${catIdC}`, { token: ADMIN, body: { nombre: `CAT-SMOKE-${tsC}-EDIT`, orden: 100 } });
+      check('Carta admin: PUT categorias/:id → 200', uCat.status === 200 && uCat.data?.nombre?.includes('EDIT'), `status=${uCat.status}`);
+      const cIt = await raw('POST', '/carta/items', { token: ADMIN, body: { id_categoria: catIdC, nombre: `ITEM-SMOKE-${tsC}`, descripcion: 'Item smoke', precio: 15000, costo: 5000 } });
+      check('Carta admin: POST items → 201', cIt.status === 201, `status=${cIt.status}`);
+      itemIdC = cIt.data?.id;
+      const uIt = await raw('PUT', `/carta/items/${itemIdC}`, { token: ADMIN, body: { id_categoria: catIdC, nombre: `ITEM-SMOKE-EDIT-${Date.now()}`, precio: 16000, descripcion: 'Actualizado' } });
+      check('Carta admin: PUT items/:id → 200', uIt.status === 200, `status=${uIt.status}`);
+      const togg = await raw('POST', `/carta/items/${itemIdC}/toggle`, { token: ADMIN });
+      check('Carta admin: toggle → 200 activo false', togg.status === 200 && togg.data?.ok === true && togg.data?.activo === false, `status=${togg.status} data=${JSON.stringify(togg.data)}`);
+      const togg2 = await raw('POST', `/carta/items/${itemIdC}/toggle`, { token: ADMIN });
+      check('Carta admin: toggle reactivar → activo true', togg2.status === 200 && togg2.data?.activo === true, `status=${togg2.status}`);
+      const dIt = await raw('DELETE', `/carta/items/${itemIdC}`, { token: ADMIN });
+      check('Carta admin: DELETE items → 200 ok:true', dIt.status === 200 && dIt.data?.ok === true, `status=${dIt.status}`);
+      itemIdC = null;
+      const dCat = await raw('DELETE', `/carta/categorias/${catIdC}`, { token: ADMIN });
+      check('Carta admin: DELETE categorias → 200 ok:true', dCat.status === 200 && dCat.data?.ok === true, `status=${dCat.status}`);
+      catIdC = null;
+
+      // Resúmenes positivos: crear factura + comprobante reales, asignar y clasificar
+      const hoyC = new Date().toISOString().slice(0, 10);
+      const cFac = await raw('POST', '/facturas', { token: ADMIN, body: { fecha: hoyC, numero_factura: `FV-POS-${tsC}`, proveedor: 'PROV SMOKE POS', total_con_impuestos: 100000, base_imponible: 84000, iva: 16000, moneda: 'COP', items: [{ descripcion: 'Item test', cantidad: 1, precio_unitario: 100000, base_imponible: 84000, iva: 16000, total: 100000 }] } });
+      check('Resumen pos: POST /facturas → 201', cFac.status === 201, `status=${cFac.status}`);
+      factIdC = cFac.data?.id;
+      const cComp = await raw('POST', '/comprobantes', { token: ADMIN, body: { fecha: hoyC, beneficiario_emisor: 'Banco Test', referencia: `COMP-POS-${tsC}`, total_con_impuestos: 100000 } });
+      check('Resumen pos: POST /comprobantes → 201', cComp.status === 201, `status=${cComp.status}`);
+      compIdC = cComp.data?.id;
+      const asig = await raw('PATCH', '/resumenes/asignar-comprobante', { token: ADMIN, body: { facturaId: factIdC, comprobanteId: compIdC } });
+      check('Resumen pos: asignar-comprobante (ids válidos) → ok:true', asig.status === 200 && asig.data?.ok === true, `status=${asig.status} data=${JSON.stringify(asig.data)}`);
+      const flink = psql(`SELECT id_comprobante FROM facturas WHERE id=${factIdC};`);
+      check('Resumen pos: factura.id_comprobante seteado en BD', String(flink||'').includes(String(compIdC)), `row=${flink}`);
+      const clasi = await raw('PATCH', '/resumenes/clasificar-comprobante', { token: ADMIN, body: { comprobanteId: compIdC, tipo: 'transferencia' } });
+      check('Resumen pos: clasificar (transferencia) → ok:true', clasi.status === 200 && clasi.data?.ok === true, `status=${clasi.status}`);
+      const tman = psql(`SELECT tipo_manual FROM comprobantes_pago WHERE id=${compIdC};`);
+      check('Resumen pos: tipo_manual=transferencia en BD', String(tman||'').trim() === 'transferencia', `tipo=${tman}`);
+    } finally {
+      if (itemIdC) { try { psql(`DELETE FROM carta_items WHERE id=${itemIdC};`); } catch {} }
+      if (catIdC) { try { psql(`DELETE FROM carta_categorias WHERE id=${catIdC};`); } catch {} }
+      if (factIdC) { try { psql(`DELETE FROM facturas_items WHERE id_factura=${factIdC}; DELETE FROM facturas WHERE id=${factIdC};`); } catch {} }
+      if (compIdC) { try { psql(`DELETE FROM comprobantes_pago WHERE id=${compIdC};`); } catch {} }
+    }
+  }
+  // ==== FIN BLOQUE NEGOCIO C ====
+
   // ============ LIMPIEZA DE DATOS DE PRUEBA ============
   // Borra el turno (y sus movimientos), la venta y el pedido creados por la
   // suite, para que cada corrida no acumule basura en :test. Solo si existen.
