@@ -617,6 +617,41 @@ async function main() {
     check('GET /pedidos/:id → 200', getPed.status === 200, `status=${getPed.status}`);
   }
 
+  // ============ FASE 3D-BIS: SUBTOTAL DEL ITEM (precio × cantidad) ============
+  // Fix POS comanda (0.17.96): el subtotal del item en la fila de comanda debe
+  // ser precio_unitario × cantidad. La API lo expone por item en GET /pedidos/:id;
+  // este check verifica la regla de punta a punta (backend calcula el subtotal
+  // que el frontend muestra). Si alguien rompe la lógica, la fila de la comanda
+  // volvería a mostrar el unitario en vez del subtotal (bug reportado).
+  console.log('\n── FASE 3D-BIS: SUBTOTAL ITEM (precio × cantidad) ──');
+  {
+    const ped = await raw('GET', `/pedidos/${pedidoPruebaId}`, { token: ADMIN });
+    const items = Array.isArray(ped.data?.items) ? ped.data.items : [];
+    const conCantidad = items.filter((it) => Number(it['cantidad']) > 1);
+    check('pedido de prueba tiene items con cantidad > 1',
+        conCantidad.length > 0, `items=${items.length} multi=${conCantidad.length}`);
+    let todosOk = items.length > 0;
+    let detalle = '';
+    for (const it of items) {
+      const precio = Number(it['precio_unitario'] ?? 0);
+      const cant = Number(it['cantidad'] ?? 0);
+      const sub = Number(it['subtotal'] ?? -1);
+      if (Math.abs(sub - precio * cant) > 0.01) {
+        todosOk = false;
+        detalle = `${it['nombre']} sub=${sub} esperado=${precio * cant} (${precio}×${cant})`;
+        break;
+      }
+    }
+    check('subtotal item = precio_unitario × cantidad en TODOS los items',
+        todosOk, detalle || `items=${items.length}`);
+    // El total del pedido = suma de subtotales (el general que el POS muestra).
+    const sumaSubtotales = items.reduce((acc, it) => acc + Number(it['subtotal'] ?? 0), 0);
+    const totalPed = Number(ped.data?.['total'] ?? -1);
+    check('total del pedido = suma de subtotales de items',
+        Math.abs(sumaSubtotales - totalPed) <= 0.01,
+        `suma=${sumaSubtotales} total=${totalPed}`);
+  }
+
   // ============ FASE 3E: PEDIDO COCINA ============
   console.log('\n── FASE 3E: PEDIDO COCINA ──');
   {
