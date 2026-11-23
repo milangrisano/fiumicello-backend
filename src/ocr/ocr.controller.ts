@@ -18,7 +18,15 @@ import { FacturasService } from '../facturas/facturas.service';
 import { ComprobantesService } from '../comprobantes/comprobantes.service';
 import { RequirePermiso } from '../auth/permiso.decorator';
 import { PERMISSIONS } from '../auth/permissions';
-import { resolverArchivo, esMejor, motivoMejor, medirImagen, MIN_ANCHO_PX, MIN_PIXELS } from './resolucion';
+import {
+  resolverArchivo,
+  esMejor,
+  motivoMejor,
+  medirImagen,
+  calcularBlur,
+  MIN_PIXELS_ABSURDOS,
+  MIN_BLUR,
+} from './resolucion';
 
 /**
  * Raíz de imágenes servida por nginx como `/archivos/...`. Configurable por
@@ -102,17 +110,23 @@ export class OcrController {
       };
     }
 
-    // ── CAPA 1: rechazo por resolución insuficiente (REPORTE-BUG-BAJA-RESOLUCION) ──
-    // A baja resolución el modelo de visión alucina datos (número/fecha/total
-    // inventados) → findDuplicada no lo captura y se crea una factura falsa.
-    // Mejor no insertar y avisar que insertar un dato inventado en la contabilidad.
+    // ── CAPA 1: rechazo por CALIDAD (desenfoque) (REPORTE-CAPA1-CALIDAD-BLUR) ──
+    // El criterio real de legibilidad no es el tamaño (los documentos contables
+    // tienen mil proporciones legítimas: bouchers 245×1280, capturas largas),
+    // sino la nitidez: varianza del Laplaciano (blur score). Una imagen borrosa
+    // es la que hace alucinar al OCR y crear facturas inventadas.
+    // Se mantiene SOLO un mínimo absoluto de píxeles para captar tamaños absurdos.
     // Aplica a imágenes (no a PDFs, que llevan capa/tamaño de página suficiente).
     if (file.mimetype && !String(file.mimetype).toLowerCase().includes('pdf')) {
       const dims = await medirImagen(rutaOriginal);
-      if (dims.pixels > 0 && (dims.width < MIN_ANCHO_PX || dims.pixels < MIN_PIXELS)) {
+      const blur = await calcularBlur(rutaOriginal);
+      const tamAbsurdo =
+        dims.pixels > 0 && dims.pixels < MIN_PIXELS_ABSURDOS;
+      const borrosa = blur >= 0 && blur < MIN_BLUR;
+      if (tamAbsurdo || borrosa) {
         fs.rmSync(rutaOriginal, { force: true }); // no dejar residuo del temporal
         this.logger.warn(
-          `OCR rechazado por baja resolución: ${file.originalname} (${dims.width}×${dims.height}, ${dims.pixels}px)`);
+          `OCR rechazado por calidad: ${file.originalname} (${dims.width}×${dims.height}, blur=${blur.toFixed(1)}, ${tamAbsurdo ? 'tamaño absurdo' : 'borrosa'})`);
         return {
           ok: false,
           error:

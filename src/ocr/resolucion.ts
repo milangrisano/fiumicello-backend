@@ -19,9 +19,57 @@ export interface Resolucion {
   tieneTexto: boolean;
 }
 
-/** Umbral mínimo de definición para que el OCR pueda leer sin alucinar (ver REPORTE-BUG-BAJA-RESOLUCION). */
-export const MIN_ANCHO_PX = 300;
-export const MIN_PIXELS = 90000; // 300×300 (por debajo de tiquetes/fotos reales)
+/** Umbral mínimo ABSOLUTO de píxeles: solo para captar tamaños absurdos
+ *  (p. ej. iconos 40×40). NO es el criterio de calidad: una imagen nítida de
+ *  cualquier proporción legítima (boucher 245×1280 = 313.600 px) debe pasar.
+ *  El criterio real de legibilidad es la varianza del Laplaciano (calcularBlur). */
+export const MIN_PIXELS_ABSURDOS = 10000; // 100×100
+
+/** Umbral de nitidez (varianza del Laplaciano normalizada a 800px).
+ *  Calibrado 2026-11-22 con lote real IRCC en :test:
+ *    nítidas: original 415 · 80% 157 · 50% 38  → pasan
+ *    ilegibles: 35% 9.5 · 25% 2.4 · borrosa 0.5 → rechazan
+ *  MIN_BLUR=20 deja margen 2× entre legibles (≥38) e ilegibles (≤9.5). */
+export const MIN_BLUR = 20;
+
+/**
+ * Varianza del Laplaciano (blur score) de una imagen vía sharp.
+ * - Nítida  → bordes marcados → varianza ALTA.
+ * - Borrosa → bordes suaves → varianza BAJA (tiende a 0).
+ * Se normaliza la escala a ancho 800 px (sin ampliar) para que el umbral no
+ * dependa del tamaño de la imagen (una foto 4000px borrosa también debe
+ * salir baja). Devuelve -1 si no se puede medir (el caller no rechaza por
+ * blur en ese caso: otras capas de coherencia lo protegen).
+ */
+export async function calcularBlur(ruta: string): Promise<number> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sharp = require('sharp');
+    const { data } = await sharp(ruta)
+      .resize({ width: 800, withoutEnlargement: false })
+      .grayscale()
+      .convolve({
+        width: 3,
+        height: 3,
+        kernel: [0, 1, 0, 1, -4, 1, 0, 1, 0], // Laplaciano
+      })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const n = data.length;
+    if (!n) return -1;
+    let media = 0;
+    for (let i = 0; i < n; i++) media += data[i];
+    media /= n;
+    let varianza = 0;
+    for (let i = 0; i < n; i++) {
+      const d = data[i] - media;
+      varianza += d * d;
+    }
+    return varianza / n;
+  } catch {
+    return -1;
+  }
+}
 
 export interface DimensionesImg {
   width: number;
