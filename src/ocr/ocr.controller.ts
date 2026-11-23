@@ -26,6 +26,8 @@ import {
   calcularBlur,
   MIN_PIXELS_ABSURDOS,
   MIN_BLUR,
+  MIN_PIXELS_PEQUENA,
+  MIN_BLUR_PEQUENA,
 } from './resolucion';
 
 /**
@@ -110,23 +112,30 @@ export class OcrController {
       };
     }
 
-    // ── CAPA 1: rechazo por CALIDAD (desenfoque) (REPORTE-CAPA1-CALIDAD-BLUR) ──
+    // ── CAPA 1: rechazo por CALIDAD (desenfoque) — MIX (REPORTE-CAPA1-CALIDAD-BLUR) ──
     // El criterio real de legibilidad no es el tamaño (los documentos contables
     // tienen mil proporciones legítimas: bouchers 245×1280, capturas largas),
     // sino la nitidez: varianza del Laplaciano (blur score). Una imagen borrosa
     // es la que hace alucinar al OCR y crear facturas inventadas.
-    // Se mantiene SOLO un mínimo absoluto de píxeles para captar tamaños absurdos.
+    // MIX de dos niveles (sin estirar — withoutEnlargement):
+    //   - Grandes (>=150.000 px): blur nativo >= MIN_BLUR (20).
+    //   - Pequeñas (<150.000 px): blur nativo >= MIN_BLUR_PEQUENA (650), porque
+    //     una reducción ilegible (25%/35%) se ve "nítida" a su escala pero no
+    //     es legible; una captura nítida pequeña (200×200) da blur mucho mayor.
+    // Se mantiene un mínimo absoluto de píxeles para tamaños absurdos.
     // Aplica a imágenes (no a PDFs, que llevan capa/tamaño de página suficiente).
     if (file.mimetype && !String(file.mimetype).toLowerCase().includes('pdf')) {
       const dims = await medirImagen(rutaOriginal);
-      const blur = await calcularBlur(rutaOriginal);
+      const blur = await calcularBlur(rutaOriginal); // nativo (sin estirar)
       const tamAbsurdo =
         dims.pixels > 0 && dims.pixels < MIN_PIXELS_ABSURDOS;
-      const borrosa = blur >= 0 && blur < MIN_BLUR;
+      const pequena = dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA;
+      const umbral = pequena ? MIN_BLUR_PEQUENA : MIN_BLUR;
+      const borrosa = blur >= 0 && blur < umbral;
       if (tamAbsurdo || borrosa) {
         fs.rmSync(rutaOriginal, { force: true }); // no dejar residuo del temporal
         this.logger.warn(
-          `OCR rechazado por calidad: ${file.originalname} (${dims.width}×${dims.height}, blur=${blur.toFixed(1)}, ${tamAbsurdo ? 'tamaño absurdo' : 'borrosa'})`);
+          `OCR rechazado por calidad: ${file.originalname} (${dims.width}×${dims.height}, ${dims.pixels}px, blur=${blur.toFixed(1)}, umbral=${umbral}, ${tamAbsurdo ? 'tamaño absurdo' : pequena ? 'pequeña insuficientemente nítida' : 'borrosa'})`);
         return {
           ok: false,
           error:

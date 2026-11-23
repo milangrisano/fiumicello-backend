@@ -32,22 +32,43 @@ export const MIN_PIXELS_ABSURDOS = 10000; // 100×100
  *  MIN_BLUR=20 deja margen 2× entre legibles (≥38) e ilegibles (≤9.5). */
 export const MIN_BLUR = 20;
 
+/** ── MIX CALIDAD-BLUR (REPORTE-CAPA1-CALIDAD-BLUR, withoutEnlargement) ──
+ *  Estrategia de dos niveles según el tamaño, para abarcar el máximo de casos:
+ *  - Imagen GRANDE (>= MIN_PIXELS_PEQUENA): basta blur NATIVO (sin estirar)
+ *    ≥ MIN_BLUR. Cubre bouchers largos (245×1280=313.600px, nativo 1057) y
+ *    fotos normales (50%=230.400px, nativo 588).
+ *  - Imagen PEQUEÑA (< MIN_PIXELS_PEQUENA): exige blur NATIVO mucho mayor
+ *    (≥ MIN_BLUR_PEQUENA) para distinguir capturas nítidas legítimas de texto
+ *    grande (200×200 nítida → nativo 978) de reducciones ilegibles
+ *    (25%→404, 35%→519) que alucinan datos. Sin estirar: estirar castigaba a
+ *    la nítida pequeña; sin estirar, la reducción ilegible queda expuesta.
+ *  Calibrado con lote real en :test (2026-11-23). */
+export const MIN_PIXELS_PEQUENA = 150000; // ~390×390: por debajo → exigir nitidez fina
+export const MIN_BLUR_PEQUENA = 650;      // 978 (200×200 nítida) vs 519 (35% ilegible) vs 404 (25%)
+
 /**
  * Varianza del Laplaciano (blur score) de una imagen vía sharp.
  * - Nítida  → bordes marcados → varianza ALTA.
  * - Borrosa → bordes suaves → varianza BAJA (tiende a 0).
- * Se normaliza la escala reduciendo SOLO las imágenes mayores de 800px de ancho
- * (withoutEnlargement: true): las imágenes pequeñas se miden en su nitidez real
- * sin ser estiradas, para no castigar documentos legítimos pequeños (bouchers
- * 245×1280, capturas 200×200 nítidas). Devuelve -1 si no se puede medir (el
- * caller no rechaza por blur en ese caso: el mínimo de píxeles lo protege).
+ *
+ * `withEnlargement` (false por defecto) controla la normalización de escala:
+ * - false (nativo): reduce solo las mayores de 800px; las pequeñas se miden en
+ *   su nitidez real (no se castigan documentos legítimos pequeños: bouchers
+ *   245×1280, capturas nítidas de proporciones raras).
+ * - true (normalizado): estira todas a 800px; las imágenes pequeñas se suavizan
+ *   al estirarse y su score cae → detecta reducciones ilegibles (180×320 da 2.4,
+ *   aunque en nativo dé 404). Se usa como criterio adicional en imágenes pequeñas.
+ * Devuelve -1 si no se puede medir (el caller no rechaza por blur en ese caso).
  */
-export async function calcularBlur(ruta: string): Promise<number> {
+export async function calcularBlur(
+  ruta: string,
+  withEnlargement = false,
+): Promise<number> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require('sharp');
     const { data } = await sharp(ruta)
-      .resize({ width: 800, withoutEnlargement: true })
+      .resize({ width: 800, withoutEnlargement: !withEnlargement })
       .grayscale()
       .convolve({
         width: 3,
