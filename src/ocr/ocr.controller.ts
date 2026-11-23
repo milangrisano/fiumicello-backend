@@ -25,6 +25,7 @@ import {
   medirImagen,
   calcularBlur,
   decidirCalidad,
+  MIN_PIXELS_SIN_ESTIRADO,
   MIN_PIXELS_PEQUENA,
   ANCHO_ESTIRADO,
 } from './resolucion';
@@ -115,10 +116,15 @@ export class OcrController {
     if (file.mimetype && !String(file.mimetype).toLowerCase().includes('pdf')) {
       const dims = await medirImagen(rutaOriginal);
       const blur = await calcularBlur(rutaOriginal); // nativo (sin estirar)
-      // En pequeñas (posible reducción ilegible) se mide además el blur ESTIRADO
-      // a 400px: la reducción ilegible no resiste la ampliación y cae.
+      // En pequeñas (posible reducción ilegible, rango SIN_ESTIRADO..PEQUENA)
+      // se mide además el blur ESTIRADO a 400px: la reducción ilegible no
+      // resiste la ampliación y cae. Las ultra-pequeñas nítidas legítimas
+      // (100×100/120×150) quedan exentas del estirado.
       let blurEstirado = -1;
-      if (dims.pixels > 0 && dims.pixels < MIN_PIXELS_PEQUENA) {
+      if (
+        dims.pixels >= MIN_PIXELS_SIN_ESTIRADO &&
+        dims.pixels < MIN_PIXELS_PEQUENA
+      ) {
         blurEstirado = await calcularBlur(rutaOriginal, true, ANCHO_ESTIRADO);
       }
       const decision = decidirCalidad(dims, blur, blurEstirado);
