@@ -12,6 +12,7 @@ import { EmailService, EmailServiceSimulado, EmailServiceReal } from './email.se
 import { RolesPermisosService } from './roles-permisos.service';
 import { RolesService } from './roles.service';
 import { RolesController } from './roles.controller';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RolesController } from './roles.controller';
       secret: requireEnv('JWT_SECRET', 'secreto de firma JWT'),
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '12h') as unknown as number },
     }),
+    RealtimeModule,
   ],
   controllers: [AuthController, RolesController],
   providers: [

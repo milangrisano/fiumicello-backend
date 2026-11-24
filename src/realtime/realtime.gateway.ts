@@ -82,4 +82,10 @@ export class RealtimeGateway
   emitPedidoAnulado(data: Record<string, unknown>) {
     this.server.emit('pedido:anulada', data);
   }
+
+  // Usuario nuevo registrado en estado 'pendiente': los aprobadores (admin)
+  // reciben el evento para refrescar la lista de usuarios sin recarga manual.
+  emitUsuarioPendiente(data: Record<string, unknown>) {
+    this.server.emit('usuario:pendiente', data);
+  }
 }

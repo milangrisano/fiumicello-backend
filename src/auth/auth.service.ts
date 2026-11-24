@@ -14,6 +14,7 @@ import * as crypto from 'crypto';
 import { Usuario, UserRole, UserStatus } from '../entities/usuario.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import { EmailService } from './email.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const TOKEN_BYTES = 32; // 32 random bytes -> long base64 token
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly refreshTokens: Repository<RefreshToken>,
     private readonly jwt: JwtService,
     private readonly email: EmailService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   // ---- helpers ----
@@ -186,6 +188,14 @@ export class AuthService {
     // remains estado='pendiente' until superadmin approves
     await this.usuarios.save(user);
     this.logger.log(`Usuario verificado y creado (pendiente de aprobación): ${normalized} (rol ${user.rol})`);
+    // Tiempo real: avisa a los aprobadores (admin) para que la pantalla de
+    // usuarios se refresque sola y vean el nuevo pendiente sin recargar.
+    try {
+      this.realtime.emitUsuarioPendiente({ email: normalized, rol: user.rol, id: user.id });
+    } catch (e) {
+      // El socket no debe romper el registro si por algún motivo falla.
+      this.logger.warn(`No se pudo emitir usuario:pendiente: ${(e as Error).message}`);
+    }
     await this.email.sendAccountStatus(
       normalized,
       'Tu cuenta fue creada y quedó pendiente de aprobación. Te avisaremos cuando sea aprobada.',
