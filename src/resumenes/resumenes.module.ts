@@ -6,9 +6,13 @@ import { Factura } from '../entities/factura.entity';
 import { ComprobantePago } from '../entities/comprobante.entity';
 import { ResumenesService } from './resumenes.service';
 import { ResumenesController } from './resumenes.controller';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Venta, VentaItem, Factura, ComprobantePago])],
+  imports: [
+    TypeOrmModule.forFeature([Venta, VentaItem, Factura, ComprobantePago]),
+    RealtimeModule,
+  ],
   controllers: [ResumenesController],
   providers: [ResumenesService],
 })

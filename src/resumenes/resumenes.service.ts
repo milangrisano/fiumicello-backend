@@ -6,6 +6,7 @@ import * as path from 'path';
 import { Venta } from '../entities/venta.entity';
 import { VentaItem } from '../entities/venta-item.entity';
 import { Factura, extraer4 } from '../entities/factura.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ComprobantePago } from '../entities/comprobante.entity';
 import { partesFechaBogota } from '../common/date-utils';
 
@@ -23,6 +24,7 @@ export class ResumenesService {
     @InjectRepository(Factura) private readonly facturas: Repository<Factura>,
     @InjectRepository(ComprobantePago)
     private readonly comprobantes: Repository<ComprobantePago>,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   /** Raíz de archivos servidos (mismo env que OCR/escaneo). */
@@ -492,6 +494,12 @@ export class ResumenesService {
 
     await this.facturas.save(factura);
     await this.comprobantes.save(comprobante);
+    // Tiempo real: la asignación cambia factura + comprobante → refrescar pantallas.
+    try {
+      this.realtime.emitFacturaActualizada({ id: factura.id, idComprobante: comprobante.id });
+    } catch (e) {
+      // El evento nunca debe romper la asignación.
+    }
     return {
       ok: true,
       mensaje: `Factura ${factura.numero_factura ?? factura.id} vinculada al comprobante ${comprobante.referencia ?? comprobante.id}.`,
@@ -508,6 +516,12 @@ export class ResumenesService {
     if (!comprobante) return { ok: false, mensaje: 'Comprobante no encontrado.' };
     comprobante.tipo_manual = tipo;
     await this.comprobantes.save(comprobante);
+    // Tiempo real: la clasificación cambia el comprobante → refrescar pantallas.
+    try {
+      this.realtime.emitFacturaActualizada({ idComprobante: comprobante.id });
+    } catch (e) {
+      // El evento nunca debe romper la clasificación.
+    }
     const etiqueta =
       tipo === 'transferencia'
         ? 'Transferencia'

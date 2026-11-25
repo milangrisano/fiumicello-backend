@@ -62,6 +62,17 @@ export class RealtimeGateway
     this.server.emit('factura:nueva', data);
   }
 
+  // Factura actualizada (p. ej. al asignarle/clasificar un comprobante):
+  // refresca facturas e items en las pantallas abiertas.
+  emitFacturaActualizada(data: Record<string, unknown>) {
+    this.server.emit('factura:actualizada', data);
+  }
+
+  // Comprobante nuevo creado: refresca la pestaña de comprobantes.
+  emitComprobanteNuevo(data: Record<string, unknown>) {
+    this.server.emit('comprobante:nuevo', data);
+  }
+
   emitCocinaEstado(data: Record<string, unknown>) {
     this.server.emit('cocina:estado', data);
   }

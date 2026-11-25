@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ComprobantePago } from '../entities/comprobante.entity';
 import { CreateComprobanteDto, UpdateComprobanteDto } from './dto/comprobante.dto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface ComprobantesFiltros {
   desde?: string;
@@ -19,9 +20,12 @@ export interface ComprobantesFiltros {
 
 @Injectable()
 export class ComprobantesService {
+  private readonly logger = new Logger(ComprobantesService.name);
+
   constructor(
     @InjectRepository(ComprobantePago)
     private readonly repo: Repository<ComprobantePago>,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async findAll(f: ComprobantesFiltros = {}) {
@@ -78,7 +82,15 @@ export class ComprobantesService {
       estado: dto.estado || 'verificado',
       created_at: new Date().toISOString(),
     });
-    return await this.repo.save(comprobante);
+    const guardado = await this.repo.save(comprobante);
+    // Tiempo real: avisa para que la pestaña de comprobantes se refresque sola.
+    try {
+      this.realtime.emitComprobanteNuevo({ id: guardado.id, referencia: guardado.referencia });
+    } catch (e) {
+      // El evento nunca debe romper la creación del comprobante.
+      this.logger.warn(`No se pudo emitir comprobante:nuevo: ${(e as Error).message}`);
+    }
+    return guardado;
   }
 
   async update(id: number, dto: UpdateComprobanteDto): Promise<ComprobantePago> {
