@@ -749,6 +749,15 @@ async function main() {
     const verifForma = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
     const formaDesac = Array.isArray(verifForma.data) && verifForma.data.find(f => f.id === formaIdG);
     check('forma quedó desactivada (no borrada)', formaDesac && formaDesac.activo === false, `activo=${formaDesac?.activo}`);
+    // REGRESIÓN (fix 0.18.3): editar SOLO el nombre. El frontend envía
+    // {nombre, activo: null} y el backend NO debe: (a) dar 500 ni (b) pisar
+    // activo a null (columna NOT NULL). El nombre nuevo debe persistir.
+    const editarNombre = await raw('PUT', `/ventas/formas-pago/${formaIdG}`, { token: ADMIN, body: { nombre: 'METODO-RENOMBRADO', activo: null } });
+    check('REGRESIÓN: editar solo nombre (activo:null) → 200 (no 500)', editarNombre.status === 200, `status=${editarNombre.status}`);
+    const verifRenomb = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+    const renomb = Array.isArray(verifRenomb.data) && verifRenomb.data.find(f => f.id === formaIdG);
+    check('REGRESIÓN: nuevo nombre persistido', renomb?.nombre === 'METODO-RENOMBRADO', `nombre=${renomb?.nombre}`);
+    check('REGRESIÓN: activo NO se pisó a null (sigue false)', renomb?.activo === false, `activo=${renomb?.activo}`);
     // limpieza: borrar venta de prueba (items + venta)
     if (ventaDirectaId) { try { psql(`DELETE FROM venta_items WHERE id_venta=${ventaDirectaId}; DELETE FROM ventas WHERE id=${ventaDirectaId};`); } catch {} }
   }
@@ -1338,6 +1347,35 @@ async function main() {
     check('NegSec: /resumenes/clasificar-comprobante con cocinero (sin resumenes:ver) → 403', claCoc.status === 403, `status=${claCoc.status}`);
   }
   // ==== FIN BLOQUE SEGURIDAD-NEGOCIO ====
+
+  // ============ FASE 6A: TIEMPO REAL (WebSocket por nginx) ============
+  // REGRESIÓN (fix 0.18.4): nginx debe proxear /socket.io/ al backend.
+  // Sin el location de upgrade, el handshake cae en `location /` y devuelve
+  // el HTML de la app (text/html) en vez del SID de Socket.IO.
+  console.log('\n── FASE 6A: TIEMPO REAL (WebSocket /socket.io/) ──');
+  {
+    const socketBase = BASE.replace('/api', '');
+    const hsRes = await fetch(`${socketBase}/socket.io/?EIO=4&transport=polling`, {
+      headers: { Accept: 'application/json' },
+    });
+    const hsBody = await hsRes.text();
+    const esHandshake = hsBody.includes('"sid"') || /^\d+\{"sid"/.test(hsBody.trim());
+    const contentType = hsRes.headers.get('content-type') || '';
+    check('WS: handshake /socket.io → 200 y NÚCLEO Socket.IO (no HTML)', hsRes.status === 200 && esHandshake, `status=${hsRes.status} ct=${contentType} body=${hsBody.slice(0,60)}`);
+    check('WS: content-type NO es text/html (nginx no devuelve la app)', !contentType.includes('text/html'), `ct=${contentType}`);
+
+    // REGRESIÓN (fix 0.18.5): crear comprobante dispara comprobante:nuevo y
+    // asignar dispara factura:actualizada. Para no depender de un cliente
+    // Socket.IO en la suite, verificamos que los endpoints mutan sin error
+    // (el evento ya está cubierto por la prueba manual del QA con socket-client).
+    const tsW = Date.now();
+    const cW = await raw('POST', '/comprobantes', { token: ADMIN, body: { fecha: '2026-11-24', beneficiario_emisor: 'WS E2E', referencia: `WS-E2E-${tsW}`, total_con_impuestos: 1000 } });
+    check('WS: POST /comprobantes → 201 (para evento realtime)', cW.status === 201, `status=${cW.status}`);
+    const cWId = cW.data?.id;
+    if (cWId) {
+      try { psql(`DELETE FROM comprobantes_pago WHERE id=${cWId};`); } catch {}
+    }
+  }
 
   // ============ LIMPIEZA DE DATOS DE PRUEBA ============
   // Borra el turno (y sus movimientos), la venta y el pedido creados por la
