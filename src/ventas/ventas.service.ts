@@ -216,8 +216,12 @@ export class VentasService {
   async actualizarFormaPago(id: number, nombre: string, activo?: boolean) {
     const fp = await this.formasPago.findOneBy({ id });
     if (!fp) throw new NotFoundException('Forma de pago no encontrada.');
-    if (nombre !== undefined) fp.nombre = nombre.trim();
-    if (activo !== undefined) fp.activo = activo;
+    if (nombre !== undefined && nombre !== null) fp.nombre = nombre.trim();
+    // Solo tocar `activo` si vino un valor real (true/false): si el cliente
+    // manda `activo: null` (p. ej. al editar SOLO el nombre), NO sobrescribir.
+    // La columna es NOT NULL; guardar null daría 500 y abortaría todo el save
+    // (incluido el nombre nuevo).
+    if (activo !== undefined && activo !== null) fp.activo = activo;
     await this.formasPago.save(fp);
     return fp;
   }
