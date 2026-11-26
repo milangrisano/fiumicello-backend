@@ -58,6 +58,15 @@ export class RealtimeGateway
     this.server.emit('comanda:nueva', data);
   }
 
+  // Pedido actualizado (cobrar / entregar): refresca "pedidos para llevar" y
+  // "domicilios" en TODOS los terminales, para que una comanda que otro
+  // terminal acaba de cobrar/entregar desaparezca al instante (evita el
+  // snackbar "El pedido no está pendiente de entrega." al tocar un pedido
+  // que ya se entregó en otra pantalla).
+  emitPedidoActualizado(data: Record<string, unknown>) {
+    this.server.emit('pedido:actualizado', data);
+  }
+
   emitFacturaNueva(data: Record<string, unknown>) {
     this.server.emit('factura:nueva', data);
   }

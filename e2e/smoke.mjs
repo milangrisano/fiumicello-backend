@@ -20,7 +20,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, unlinkSync, readFileSync } from 'node:fs';
 
 // bcrypt del backend (presente en node_modules del contenedor).
 const bcrypt = (await import('bcrypt')).default;
@@ -1374,6 +1374,21 @@ async function main() {
     const cWId = cW.data?.id;
     if (cWId) {
       try { psql(`DELETE FROM comprobantes_pago WHERE id=${cWId};`); } catch {}
+    }
+
+    // REGRESIÓN (fix pedido:actualizado): cobrar y entregar deben emitir en
+    // tiempo real para que los demás terminales refresquen el pedido (evita
+    // tocar "Marcar entregado" sobre algo ya entregado → snackbar 403).
+    // Se verifica contra el módulo COMPILADO que el gateway expone el emisor
+    // y que pedidos.service lo invoca en cobrar y entregar.
+    try {
+      const gw = readFileSync('/app/dist/realtime/realtime.gateway.js', 'utf8');
+      const psvc = readFileSync('/app/dist/pedidos/pedidos.service.js', 'utf8');
+      check('REGRESIÓN: gateway expone emitPedidoActualizado', gw.includes('emitPedidoActualizado'), 'gateway');
+      check('REGRESIÓN: pedidos.service invoca emitPedidoActualizado', psvc.includes('emitPedidoActualizado'), 'pedidos.service');
+      check('REGRESIÓN: evento pedido:actualizado en nomenclatura', gw.includes("'pedido:actualizado'"), 'evento');
+    } catch (e) {
+      check('REGRESIÓN: gateway/emisión pedido:actualizado legibles', false, 'error=' + String(e));
     }
   }
 

@@ -275,6 +275,9 @@ export class PedidosService {
       }
     });
     await this.pedidos.save(p);
+    // Tiempo real: al cobrar, los demás terminales refrescan "para llevar" y
+    // "domicilios" al instante (la comanda pasa a pagada_pendiente).
+    this.realtime.emitPedidoActualizado({ id: p.id, escenario: p.escenario, estado: p.estado });
     return this.obtener(id);
   }
 
@@ -291,6 +294,11 @@ export class PedidosService {
     p.estado = 'entregada';
     p.hora_entrega = new Date().toISOString();
     await this.pedidos.save(p);
+    // Tiempo real: el pedido entraga desaparece de "para llevar"/"domicilios"
+    // en TODOS los terminales, evitando tocar el botón sobre algo ya entregado
+    // (que era lo que producía el snackbar "El pedido no está pendiente de
+    // entrega." al otro terminal).
+    this.realtime.emitPedidoActualizado({ id: p.id, escenario: p.escenario, estado: p.estado });
     return this.obtener(id);
   }
 
