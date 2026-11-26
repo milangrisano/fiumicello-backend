@@ -1390,6 +1390,73 @@ async function main() {
     } catch (e) {
       check('REGRESIÓN: gateway/emisión pedido:actualizado legibles', false, 'error=' + String(e));
     }
+
+    // === WEB  CLIENTE WS REAL (flujo completo en vivo) ===
+    // Conecta un cliente Socket.IO al nginx, crea un para_llevar, lo cobra y lo
+    // entrega; verifica que `pedido:actualizado` llega AL SOCKET (no solo el
+    // código). El socket.io-client se instala en /tmp/wsclient por run-smoke.sh.
+    let io = null;
+    try {
+      const { createRequire } = await import('node:module');
+      const cRequire = createRequire('/tmp/wsclient/package.json');
+      io = cRequire('socket.io-client');
+    } catch (e) {
+      console.log('   (sin socket.io-client en el contenedor — se omiten checks de cliente WS)');
+    }
+    if (io) {
+      const wsBase = BASE.replace('/api', '');
+      let wsSelId = null;
+      let wsCobrado = null;
+      let wsEntregado = null;
+      const socket = io(wsBase, { transports: ['websocket'], auth: { token: ADMIN }, reconnection: false, timeout: 8000 });
+      socket.on('pedido:actualizado', (d) => {
+        if (d && d.id !== wsSelId) return;
+        if (d && d.estado === 'pagada_pendiente') wsCobrado = d;
+        if (d && d.estado === 'entregada') wsEntregado = d;
+      });
+      const conectado = await new Promise((res) => {
+        const t = setTimeout(() => res(false), 8000);
+        socket.once('connect', () => { clearTimeout(t); res(true); });
+        socket.once('connect_error', () => { clearTimeout(t); res(false); });
+      });
+      check('WS real: cliente conecta al socket (handshake autenticado)', conectado === true, conectado ? 'ok' : 'error');
+      if (conectado) {
+        // crear pedido para_llevar
+        const cartaWs = await raw('GET', '/carta', { token: ADMIN });
+        let idProdWs = 48;
+        if (cartaWs.status === 200 && cartaWs.data?.categorias) {
+          const todos = [];
+          for (const c of cartaWs.data.categorias) if (Array.isArray(c.items)) todos.push(...c.items);
+          if (todos.length) idProdWs = todos[0].id || 48;
+        }
+        const crearWs = await raw('POST', '/pedidos', { token: ADMIN, body: { escenario: 'para_llevar', cliente_nombre: `WS-E2E-${Date.now()}`, items: [{ id_producto: idProdWs, cantidad: 1 }] } });
+        wsSelId = crearWs.data?.id;
+        check('WS real: pedido para_llevar creado', crearWs.status === 201 && !!wsSelId, `status=${crearWs.status} id=${wsSelId}`);
+        if (wsSelId) {
+          // cobrar
+          const formasWs = await raw('GET', '/ventas/formas-pago', { token: ADMIN });
+          let fpWs = null;
+          if (Array.isArray(formasWs.data)) { const a = formasWs.data.find(f => f.activo === true); fpWs = a ? a.id : null; }
+          const cobWs = await raw('POST', `/pedidos/${wsSelId}/cobrar`, { token: ADMIN, body: { id_forma_pago: fpWs } });
+          check('WS real: cobrar → 201 (dispara pedido:actualizado)', cobWs.status === 201, `status=${cobWs.status}`);
+          await sleep(1500);
+          // entregar
+          const entWs = await raw('POST', `/pedidos/${wsSelId}/entregar`, { token: ADMIN });
+          check('WS real: entregar → 201 (dispara pedido:actualizado)', entWs.status === 201 || entWs.status === 200, `status=${entWs.status}`);
+          await sleep(1500);
+        }
+        check('WS real: evento pedido:actualizado recibido al COBRAR (pagada_pendiente)', wsCobrado && wsCobrado.id === wsSelId, wsCobrado ? `id=${wsCobrado.id} estado=${wsCobrado.estado}` : 'no llegó');
+        check('WS real: evento pedido:actualizado recibido al ENTREGAR (entregada)', wsEntregado && wsEntregado.id === wsSelId, wsEntregado ? `id=${wsEntregado.id} estado=${wsEntregado.estado}` : 'no llegó');
+        socket.disconnect();
+        if (wsSelId) { try {
+          // borrar pedido y la venta que cobrar creó (auto-limpieza)
+          psql(`DELETE FROM pedido_items WHERE id_pedido=${wsSelId}; DELETE FROM pedidos WHERE id=${wsSelId};`);
+          psql(`DELETE FROM vi FROM venta_items vi JOIN ventas v ON vi.id_venta=v.id WHERE v.cliente_nombre LIKE 'WS-E2E-%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'WS-E2E-%';`);
+        } catch {} }
+      } else {
+        socket.disconnect();
+      }
+    }
   }
 
   // ============ LIMPIEZA DE DATOS DE PRUEBA ============
