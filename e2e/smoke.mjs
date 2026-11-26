@@ -982,6 +982,8 @@ async function main() {
       check('Entregar: entregar pedido ya entregado → 403', entregar2.status === 403, `status=${entregar2.status}`);
       psql(`DELETE FROM pedido_items WHERE id_pedido=${pedEntId}; DELETE FROM pedidos WHERE id=${pedEntId};`);
     }
+    // el cobrar crea una VENTA además del pedido — auto-limpieza de la venta
+    psql(`DELETE FROM vi FROM venta_items vi JOIN ventas v ON vi.id_venta=v.id WHERE v.cliente_nombre LIKE 'CLIENTE ENTREGA%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'CLIENTE ENTREGA%';`);
   }
   // ==== FIN BLOQUE ESCANEO-OCR-COCINA ====
 
