@@ -983,7 +983,8 @@ async function main() {
       psql(`DELETE FROM pedido_items WHERE id_pedido=${pedEntId}; DELETE FROM pedidos WHERE id=${pedEntId};`);
     }
     // el cobrar crea una VENTA además del pedido — auto-limpieza de la venta
-    psql(`DELETE FROM vi FROM venta_items vi JOIN ventas v ON vi.id_venta=v.id WHERE v.cliente_nombre LIKE 'CLIENTE ENTREGA%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'CLIENTE ENTREGA%';`);
+    // (sintaxis Postgres con USING, NO "DELETE FROM vi FROM ... JOIN" que es MySQL y falla en silencio dentro del psql try/catch)
+    psql(`DELETE FROM venta_items vi USING ventas v WHERE vi.id_venta = v.id AND v.cliente_nombre LIKE 'CLIENTE ENTREGA%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'CLIENTE ENTREGA%';`);
   }
   // ==== FIN BLOQUE ESCANEO-OCR-COCINA ====
 
@@ -1459,7 +1460,7 @@ async function main() {
         if (wsSelId) { try {
           // borrar pedido y la venta que cobrar creó (auto-limpieza)
           psql(`DELETE FROM pedido_items WHERE id_pedido=${wsSelId}; DELETE FROM pedidos WHERE id=${wsSelId};`);
-          psql(`DELETE FROM vi FROM venta_items vi JOIN ventas v ON vi.id_venta=v.id WHERE v.cliente_nombre LIKE 'WS-E2E-%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'WS-E2E-%';`);
+          psql(`DELETE FROM venta_items vi USING ventas v WHERE vi.id_venta = v.id AND v.cliente_nombre LIKE 'WS-E2E-%'; DELETE FROM ventas WHERE cliente_nombre LIKE 'WS-E2E-%';`);
         } catch {} }
       } else {
         socket.disconnect();
