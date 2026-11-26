@@ -974,6 +974,12 @@ async function main() {
       check('Entregar: POST /pedidos/:id/entregar → 201/200', entregarE2.status === 201 || entregarE2.status === 200, `status=${entregarE2.status}`);
       const pedFin = await raw('GET', `/pedidos/${pedEntId}`, { token: ADMIN });
       check('Entregar: estado final = entregada', pedFin.data?.estado === 'entregada', `estado=${pedFin.data?.estado}`);
+      // REGRESIÓN snackbar (0.18.7): entregar un pedido que YA fue entregado en
+      // otro terminal debe dar 403 con mensaje real de backend (NO el genérico
+      // "No se pudo completar la operación" que venía de mostrar el pedido sin
+      // message en ÉXITO). El 403 es el que dispara el snackbar de error REAL.
+      const entregar2 = await raw('POST', `/pedidos/${pedEntId}/entregar`, { token: ADMIN });
+      check('Entregar: entregar pedido ya entregado → 403', entregar2.status === 403, `status=${entregar2.status}`);
       psql(`DELETE FROM pedido_items WHERE id_pedido=${pedEntId}; DELETE FROM pedidos WHERE id=${pedEntId};`);
     }
   }
